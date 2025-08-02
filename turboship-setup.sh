@@ -17,11 +17,16 @@ sudo apt install -y nodejs build-essential
 sudo npm install -g pm2
 pm2 startup systemd -u ubuntu --hp /home/ubuntu
 
-echo "🗄️ Installing MySQL..."
-sudo apt install mysql-server -y
-sudo systemctl enable mysql
-sudo systemctl start mysql
+echo "🗄️ Installing MariaDB..."
+sudo apt install mariadb-server -y
+sudo systemctl enable mariadb
+sudo systemctl start mariadb
 sudo mysql_secure_installation
+
+echo "🐘 Installing PostgreSQL..."
+sudo apt install postgresql postgresql-contrib -y
+sudo systemctl enable postgresql
+sudo systemctl start postgresql
 
 echo "🔐 Installing Certbot for SSL..."
 sudo apt install certbot python3-certbot-nginx -y
