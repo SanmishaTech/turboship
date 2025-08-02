@@ -13,6 +13,15 @@ No Docker. No bloated panels. Just efficient CLI + scripts.
 - PM2 for backend process management
 - NGINX as reverse proxy + Let's Encrypt SSL
 - UFW firewall preconfigured
+- Option to restore from backup
+- Email notifications on new setup/removal
+- Add real domain mapping support
+- Enable reverse domain lookup
+- Add interactive help (--help)
+- Customize the landing page style/content.
+- Support .env file creation for each project.
+- Add a search or filter to list_projects.
+- include database backup also
 
 ---
 
