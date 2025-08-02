@@ -165,7 +165,7 @@ server {{
 
 def install_ssl(domains):
     args = [
-        "certbot", "--nginx", "--non-interactive", "--agree-tos", "--redirect",
+        "certbot", "--nginx", "--non-interactive", "--agree-tos", "--redirect", "--expand",
         "-m", f"admin@{domains[0]}"
     ]
     for d in domains:
