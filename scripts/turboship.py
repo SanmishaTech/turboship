@@ -262,19 +262,31 @@ def remove_project(project):
 
 def main():
     init_db()
-    parser = argparse.ArgumentParser(description="Turboship v0.7 - Multi-Project Hosting Tool")
-    parser.add_argument("--create", action="store_true", help="Create new project")
-    parser.add_argument("--test", metavar="PROJECT", help="Test existing project")
-    parser.add_argument("--list", action="store_true", help="List all projects")
-    parser.add_argument("--remove", metavar="PROJECT", help="Remove project and all configs")
-    parser.add_argument("--domain", metavar="DOMAIN", help="Use custom domain")
-    parser.add_argument("--map-domain", metavar="PROJECT", help="Map domain for existing project")
+    parser = argparse.ArgumentParser(
+        description=colored("Turboship v0.7 - Multi-Project Hosting Tool", "cyan"),
+        formatter_class=argparse.RawTextHelpFormatter
+    )
 
-    print(colored(figlet_format("Turboship"), "green"))
-    print(colored(f"Turboship v{TURBOSHIP_VERSION} CLI", "blue"))
+    parser.add_argument("--create", action="store_true",
+                        help="Create a new project with optional real domain\n  Example: --create --domain yourdomain.com")
+    parser.add_argument("--test", metavar="PROJECT",
+                        help="Run health checks for a project\n  Example: --test myproject")
+    parser.add_argument("--list", action="store_true",
+                        help="List all created projects in a table")
+    parser.add_argument("--remove", metavar="PROJECT",
+                        help="Remove a project completely (with warning)\n  Example: --remove myproject")
+    parser.add_argument("--domain", metavar="DOMAIN",
+                        help="(Used with --create or --map-domain) Specify real domain\n  Example: --create --domain myapp.sanmisha.com")
+    parser.add_argument("--map-domain", metavar="PROJECT",
+                        help="Map real domain to existing project\n  Example: --map-domain myproject --domain mydomain.com")
 
     args = parser.parse_args()
 
+    # Banner
+    print(colored(figlet_format("Turboship"), "green"))
+    print(colored(f"Turboship v{TURBOSHIP_VERSION} CLI", "blue"))
+
+    # Command Handling
     if args.create:
         create_project(custom_domain=args.domain)
     elif args.test:
@@ -286,7 +298,8 @@ def main():
     elif args.map_domain and args.domain:
         map_domain(args.map_domain, args.domain)
     else:
-        print("Usage: --create | --remove <project> | --test <project> | --map-domain <project> --domain <domain> | --list")
+        print(colored("⚠️  No valid command given.\n", "yellow"))
+        parser.print_help()
 
 if __name__ == "__main__":
     main()
