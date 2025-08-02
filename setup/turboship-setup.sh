@@ -8,7 +8,7 @@ set -e
 # 1. Update & Install Dependencies
 echo "📦 Updating system and installing dependencies..."
 sudo apt update && sudo apt upgrade -y
-sudo apt install -y nginx python3 python3-pip python3-venv git mariadb-server postgresql postgresql-contrib acl ufw unzip
+sudo apt install -y nginx python3 python3-pip python3-venv git mariadb-server postgresql postgresql-contrib acl ufw unzip openssh-server
 
 # 2. Python Packages for CLI
 echo "🐍 Installing Python packages..."
@@ -47,6 +47,13 @@ echo "host    all             all             0.0.0.0/0               md5" | sud
 sudo sed -i "s/^#listen_addresses = 'localhost'/listen_addresses = '*'/'" /etc/postgresql/*/main/postgresql.conf
 sudo systemctl restart postgresql
 
-# 9. Done
+# 9. Configure SSH to allow password authentication for SFTP
+sudo sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+sudo sed -i 's/^#\?KbdInteractiveAuthentication.*/KbdInteractiveAuthentication yes/' /etc/ssh/sshd_config
+sudo sed -i 's/^#\?ChallengeResponseAuthentication.*/ChallengeResponseAuthentication no/' /etc/ssh/sshd_config
+sudo sed -i 's/^#\?UsePAM.*/UsePAM yes/' /etc/ssh/sshd_config
+sudo systemctl restart ssh
+
+# 10. Done
 echo "✅ Turboship environment setup is complete. Ready to launch projects!"
 echo "👉 Run python3 turboship.py to create a project."
