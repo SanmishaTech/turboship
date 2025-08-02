@@ -1,11 +1,37 @@
-# turboship.py - Turboship v0.2.1
+# turboship.py - Turboship v0.3
 import os
 import subprocess
 import random
 import string
 import csv
 import socket
+import re
+import sqlite3
 from datetime import datetime
+
+TURBOSHIP_VERSION = "0.3"
+DB_PATH = "/opt/turboship/turboship.db"
+
+
+# Ensure database exists
+def init_db():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS projects (
+            project TEXT PRIMARY KEY,
+            domain TEXT,
+            db_type TEXT,
+            db_name TEXT,
+            db_user TEXT,
+            db_pass TEXT,
+            sftp_user TEXT,
+            created_at TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
 
 def get_public_ip():
@@ -14,6 +40,10 @@ def get_public_ip():
 
 def generate_password(length=12):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+
+
+def validate_project_name(name):
+    return re.match("^[a-zA-Z0-9_-]+$", name) is not None
 
 
 def prompt_database():
@@ -30,21 +60,10 @@ def prompt_database():
         return prompt_database()
 
 
-def validate_project_name(name):
-    return name.replace('-', '').replace('_', '').isalnum()
-
-
-def log_action(action, project):
-    log_file = "/opt/turboship/audit.log"
-    os.makedirs(os.path.dirname(log_file), exist_ok=True)
-    with open(log_file, 'a') as f:
-        f.write(f"[{datetime.now()}] {action}: {project}\n")
-
-
 def create_project(dry_run=False):
     project = input("Enter project name: ").strip()
     if not validate_project_name(project):
-        print("Invalid project name. Only letters, numbers, hyphens, and underscores allowed.")
+        print("Invalid project name. Only alphanumeric characters, dashes and underscores allowed.")
         return
 
     db_type = prompt_database()
@@ -56,15 +75,18 @@ def create_project(dry_run=False):
 
     public_ip = get_public_ip()
     domain = f"{project}.{public_ip}.sslip.io"
+    
+    now = datetime.now().isoformat()
 
-    if dry_run:
-        print("\n[DRY RUN] These actions would be performed:")
-    print(f"\nGenerated Domain: https://{domain}")
-    print(f"SFTP User: {sftp_user}")
-    print(f"Database Type: {db_type}")
-    print(f"Database Name: {db_name}")
-    print(f"DB User: {db_user}")
-    print(f"DB Password: {db_pass}")
+    print(f"\nTurboship v{TURBOSHIP_VERSION} - Project Summary:")
+    print(f"  Project Name : {project}")
+    print(f"  Domain       : https://{domain}")
+    print(f"  SFTP User    : {sftp_user}")
+    print(f"  DB Type      : {db_type}")
+    print(f"  DB Name      : {db_name}")
+    print(f"  DB User      : {db_user}")
+    print(f"  DB Password  : {db_pass}")
+    print(f"  Created At   : {now}\n")
 
     if dry_run:
         return
@@ -80,8 +102,7 @@ def create_project(dry_run=False):
 
     configure_nginx(project, domain)
     install_ssl(domain)
-    save_to_csv(project, domain, db_type, db_name, db_user, db_pass, sftp_user)
-    log_action("CREATED", project)
+    save_to_db(project, domain, db_type, db_name, db_user, db_pass, sftp_user, now)
 
 
 def create_mariadb_user(user, password, db):
@@ -128,15 +149,25 @@ def install_ssl(domain):
     os.system(f"certbot --nginx --non-interactive --agree-tos -d {domain} -m admin@{domain} --redirect")
 
 
-def save_to_csv(project, domain, db_type, db_name, db_user, db_pass, sftp_user):
-    csv_file = "/opt/turboship/project_registry.csv"
-    os.makedirs(os.path.dirname(csv_file), exist_ok=True)
-    file_exists = os.path.isfile(csv_file)
-    with open(csv_file, 'a', newline='') as f:
-        writer = csv.writer(f)
-        if not file_exists:
-            writer.writerow(["project", "domain", "db_type", "db_name", "db_user", "db_pass", "sftp_user"])
-        writer.writerow([project, domain, db_type, db_name, db_user, db_pass, sftp_user])
+def save_to_db(project, domain, db_type, db_name, db_user, db_pass, sftp_user, created_at):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("INSERT INTO projects VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+              (project, domain, db_type, db_name, db_user, db_pass, sftp_user, created_at))
+    conn.commit()
+    conn.close()
+
+
+def list_projects():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT * FROM projects")
+    rows = c.fetchall()
+    if not rows:
+        print("No projects found.")
+    for row in rows:
+        print(f"Project: {row[0]}, Domain: {row[1]}, DB: {row[2]} ({row[3]}), SFTP: {row[6]}, Created: {row[7]}")
+    conn.close()
 
 
 def remove_project():
@@ -146,58 +177,46 @@ def remove_project():
         print("Aborted.")
         return
 
-    # Backup files before deletion (optional enhancement)
-    backup_dir = f"/opt/turboship/backups/{project}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    os.makedirs(backup_dir, exist_ok=True)
-    os.system(f"cp -r /var/www/{project} {backup_dir} 2>/dev/null")
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT * FROM projects WHERE project = ?", (project,))
+    result = c.fetchone()
+    if not result:
+        print("Project not found in database.")
+        conn.close()
+        return
 
-    # Remove NGINX conf
-    nginx_path = f"/etc/nginx/sites-available/{project}"
-    if os.path.exists(nginx_path):
-        os.remove(nginx_path)
-    enabled_link = f"/etc/nginx/sites-enabled/{project}"
-    if os.path.islink(enabled_link):
-        os.unlink(enabled_link)
+    sftp_user = result[6]
+
+    # Backup
+    backup = input("Do you want to take a backup of the project folder? (y/N): ").strip().lower()
+    if backup == 'y':
+        os.system(f"tar czf /opt/turboship/backups/{project}.tar.gz /var/www/{project}")
+
+    # Remove nginx
+    os.remove(f"/etc/nginx/sites-available/{project}")
+    os.unlink(f"/etc/nginx/sites-enabled/{project}")
     os.system("nginx -t && systemctl reload nginx")
 
-    # Remove project files
+    # Remove files and user
     os.system(f"rm -rf /var/www/{project}")
+    os.system(f"deluser --remove-home {sftp_user}")
 
-    # Remove user
-    os.system(f"deluser --remove-home {project}_sftp")
+    # Remove from DB
+    c.execute("DELETE FROM projects WHERE project = ?", (project,))
+    conn.commit()
+    conn.close()
 
-    # Remove from CSV
-    csv_file = "/opt/turboship/project_registry.csv"
-    lines = []
-    if os.path.exists(csv_file):
-        with open(csv_file, 'r') as f:
-            reader = csv.reader(f)
-            lines = list(reader)
-        with open(csv_file, 'w', newline='') as f:
-            writer = csv.writer(f)
-            for row in lines:
-                if row and row[0] != project:
-                    writer.writerow(row)
-
-    log_action("REMOVED", project)
     print(f"Project '{project}' removed successfully.")
 
 
-def list_projects():
-    csv_file = "/opt/turboship/project_registry.csv"
-    if not os.path.exists(csv_file):
-        print("No projects found.")
-        return
-    with open(csv_file, 'r') as f:
-        print(f.read())
-
-
-if __name__ == "__main__":
-    print("Turboship: Server Management CLI")
+def main():
+    init_db()
+    print(f"Turboship v{TURBOSHIP_VERSION}: Server Management CLI")
     print("1. Create Project")
     print("2. Remove Project")
     print("3. List Projects")
-    print("4. Dry Run (Create Project Preview)")
+    print("4. Dry Run (Preview Setup)")
     action = input("Choose action [1/2/3/4]: ").strip()
 
     if action == "1":
@@ -210,3 +229,7 @@ if __name__ == "__main__":
         create_project(dry_run=True)
     else:
         print("Invalid option.")
+
+
+if __name__ == "__main__":
+    main()
