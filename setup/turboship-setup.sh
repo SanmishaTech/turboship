@@ -1,53 +1,52 @@
 #!/bin/bash
 
-echo "🚀 Starting Turboship Server Setup..."
-echo "====================================="
+# turboship-setup.sh
+# Turboship EC2 Bootstrap Script - Sets up environment for hosting Node+React+DB projects
 
-# Exit on error
 set -e
 
-# Update & install core packages
-echo "📦 Updating packages and installing system dependencies..."
-sudo apt update
-sudo apt install -y nginx mariadb-server postgresql sqlite3 python3 python3-pip ufw
+# 1. Update & Install Dependencies
+echo "📦 Updating system and installing dependencies..."
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y nginx python3 python3-pip python3-venv git mariadb-server postgresql postgresql-contrib acl ufw unzip
 
-# Install Python dependencies required by turboship
+# 2. Python Packages for CLI
 echo "🐍 Installing Python packages..."
-python3 -m pip install --upgrade pip --break-system-packages
-python3 -m pip install --break-system-packages tabulate rich
+sudo pip3 install tabulate colorama
 
-# Verify Python packages
-if ! python3 -c "import tabulate, rich"; then
-  echo "❌ Failed to install Python dependencies."
-  exit 1
-fi
+# 3. Setup NGINX
+sudo systemctl enable nginx
+sudo systemctl start nginx
 
-# Enable and start services
-echo "🛠 Enabling and starting services..."
-sudo systemctl enable --now nginx
-sudo systemctl enable --now mariadb
-sudo systemctl enable --now postgresql
-
-# Basic firewall setup
-echo "🧱 Configuring UFW firewall..."
+# 4. Setup UFW
 sudo ufw allow OpenSSH
 sudo ufw allow 'Nginx Full'
+sudo ufw allow 3306/tcp  # MySQL Remote Access
+sudo ufw allow 5432/tcp  # PostgreSQL Remote Access
 sudo ufw --force enable
 
-# Create turboship directory
-echo "📁 Setting up project directory structure..."
-sudo mkdir -p /opt/turboship/projects
-sudo mkdir -p /opt/turboship/logs
-sudo mkdir -p /opt/turboship/db
-sudo chown -R "$USER":"$USER" /opt/turboship
+# 5. Setup Directories
+mkdir -p /var/www
+sudo chmod 755 /var/www
 
-# Clone repo if not already present
-if [ ! -d "/home/$USER/turboship" ]; then
-  echo "📥 Cloning Turboship from GitHub..."
-  git clone https://github.com/SanmishaTech/turboship.git /home/$USER/turboship
-fi
+# 6. Enable MariaDB & PostgreSQL
+echo "🔐 Enabling database services..."
+sudo systemctl enable mariadb
+sudo systemctl start mariadb
+sudo systemctl enable postgresql
+sudo systemctl start postgresql
 
-# Reminder
-echo -e "\n✅ Turboship setup completed!"
-echo "👉 To run the main script:"
-echo "   python3 /home/$USER/turboship/scripts/turboship.py"
+# 7. Configure MariaDB for remote access
+echo "🌐 Configuring MariaDB for remote access..."
+sudo sed -i "s/^bind-address\s*=\s*127.0.0.1/bind-address = 0.0.0.0/" /etc/mysql/mariadb.conf.d/50-server.cnf
+sudo systemctl restart mariadb
+
+# 8. Configure PostgreSQL for remote access
+echo "🌐 Configuring PostgreSQL for remote access..."
+echo "host    all             all             0.0.0.0/0               md5" | sudo tee -a /etc/postgresql/*/main/pg_hba.conf
+sudo sed -i "s/^#listen_addresses = 'localhost'/listen_addresses = '*'/'" /etc/postgresql/*/main/postgresql.conf
+sudo systemctl restart postgresql
+
+# 9. Done
+echo "✅ Turboship environment setup is complete. Ready to launch projects!"
+echo "👉 Run python3 turboship.py to create a project."
