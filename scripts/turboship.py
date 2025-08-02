@@ -91,7 +91,15 @@ def create_project(custom_domain=None):
     # Directory structure
     project_root = f"/var/www/{sftp_user}"
     project_path = os.path.join(project_root, "htdocs")
+    logs_path = os.path.join(project_root, "logs")
+
     os.makedirs(project_path, exist_ok=True)
+    os.makedirs(logs_path, exist_ok=True)
+
+    # Set permissions
+    os.chown(project_path, 0, 0)
+    os.system(f"chown -R {sftp_user}:{sftp_user} {project_path}")
+    os.system(f"chown -R www-data:www-data {logs_path}")
 
     # Landing page
     landing_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "landing_template.html")
@@ -148,30 +156,36 @@ def create_project(custom_domain=None):
     conn.close()
 
 def configure_nginx(project, domains):
-    if isinstance(domains, str):
-        domains = [domains]
     server_names = " ".join(domains)
-    root_path = f"/var/www/{project}/htdocs"
+    project_root = f"/var/www/{project}"
+    root_path = os.path.join(project_root, "htdocs")
+    logs_path = os.path.join(project_root, "logs")
+
+    # Ensure logs directory exists
+    os.makedirs(logs_path, exist_ok=True)
 
     conf = f"""
-server {{
-    listen 80;
-    server_name {server_names};
+        server {{
+            listen 80;
+            server_name {server_names};
 
-    root {root_path};
-    index index.html;
+            root {root_path};
+            index index.html;
 
-    location ^~ /.well-known/acme-challenge/ {{
-        allow all;
-        default_type "text/plain";
-        root {root_path};
-    }}
+            access_log  {logs_path}/access.log;
+            error_log   {logs_path}/error.log;
 
-    location / {{
-        try_files $uri $uri/ =404;
-    }}
-}}
-"""
+            location ^~ /.well-known/acme-challenge/ {{
+                allow all;
+                default_type "text/plain";
+                root {root_path};
+            }}
+
+            location / {{
+                try_files $uri $uri/ =404;
+            }}
+        }}
+    """
 
     path = f"/etc/nginx/sites-available/{project}"
     with open(path, "w") as f:
@@ -181,11 +195,9 @@ server {{
     if not os.path.exists(symlink):
         os.symlink(path, symlink)
 
-    # Ensure challenge directory exists
-    os.makedirs(os.path.join(root_path, ".well-known", "acme-challenge"), exist_ok=True)
-
-    # Reload nginx
+    os.makedirs(os.path.join(root_path, ".well-known/acme-challenge/"), exist_ok=True)
     os.system("nginx -t && systemctl reload nginx")
+
 
 def install_ssl(domains):
     if isinstance(domains, str):
@@ -237,52 +249,39 @@ def list_projects():
 def remove_project(project):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT temp_domain, real_domain, db_type, db_name, db_user, sftp_user FROM projects WHERE project=?", (project,))
+    c.execute("SELECT db_type, db_name, db_user, sftp_user FROM projects WHERE project = ?", (project,))
     row = c.fetchone()
     if not row:
-        print(colored("❌ Project not found.", "red"))
+        print(colored(f"❌ Project '{project}' not found.", "red"))
         return
 
-    temp_domain, real_domain, db_type, db_name, db_user, sftp_user = row
-    domains = [temp_domain] + ([real_domain] if real_domain else [])
+    db_type, db_name, db_user, sftp_user = row
 
-    print(colored(f"⚠️ Removing project: {project}", "red"))
-    confirm = input("Are you sure? This cannot be undone. (yes/no): ")
-    if confirm.lower() != "yes":
-        print("Cancelled.")
-        return
+    # Backup database (optional enhancement)
+    # os.system(f"mysqldump -u root {db_name} > /opt/turboship/backups/{project}_{datetime.now().date()}.sql")
 
-    # Remove from SQLite
-    c.execute("DELETE FROM projects WHERE project=?", (project,))
+    # Delete DB and user
+    if db_type == "mariadb":
+        sql = f"DROP DATABASE IF EXISTS {db_name}; DROP USER IF EXISTS '{db_user}'@'%';"
+        subprocess.run(["mysql", "-u", "root", "-e", sql])
+    elif db_type == "postgres":
+        subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', f"DROP DATABASE IF EXISTS {db_name};"])
+        subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', f"DROP USER IF EXISTS {db_user};"])
+
+    # Delete SFTP/SSH user
+    os.system(f"userdel -r {sftp_user} || true")
+
+    # Remove nginx configs
+    os.system(f"rm -f /etc/nginx/sites-available/{project}")
+    os.system(f"rm -f /etc/nginx/sites-enabled/{project}")
+    os.system("nginx -t && systemctl reload nginx")
+
+    # Remove from DB
+    c.execute("DELETE FROM projects WHERE project = ?", (project,))
     conn.commit()
     conn.close()
 
-    # Remove Nginx
-    os.remove(f"/etc/nginx/sites-available/{project}")
-    os.remove(f"/etc/nginx/sites-enabled/{project}")
-    os.system("nginx -t && systemctl reload nginx")
-
-    # Remove SSL Cert
-    for d in domains:
-        os.system(f"certbot delete --cert-name {d}")
-
-    # Delete SFTP user
-    os.system(f"userdel -r {sftp_user} || true")
-
-    # Drop DB
-    if db_type == "mariadb":
-        subprocess.run(["mysql", "-u", "root", "-e",
-                       f"DROP DATABASE IF EXISTS {db_name}; DROP USER IF EXISTS '{db_user}'@'%';"])
-    elif db_type == "postgres":
-        subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c',
-                       f"DROP DATABASE IF EXISTS {db_name};"])
-        subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c',
-                       f"DROP USER IF EXISTS {db_user};"])
-
-    # Delete project directory
-    os.system(f"rm -rf /var/www/{project}")
-
-    print(colored(f"✅ Project '{project}' deleted successfully.", "green"))
+    print(colored(f"✅ Project '{project}' and its resources removed successfully.", "green"))
 
 def map_domain(project, new_domain):
     conn = sqlite3.connect(DB_PATH)
