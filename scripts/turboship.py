@@ -126,11 +126,11 @@ def create_project(custom_domain=None):
             subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', cmd])
 
     # Nginx + SSL
-    configure_nginx(project, temp_domain)
+    configure_nginx(project, [temp_domain])
     install_ssl(temp_domain)
 
     if real_domain:
-        configure_nginx(project, real_domain)
+        configure_nginx(project, [temp_domain, real_domain])
         install_ssl(real_domain)
 
     # Save in SQLite
@@ -144,8 +144,9 @@ def create_project(custom_domain=None):
     conn.close()
 
 def configure_nginx(project, domains):
+    if isinstance(domains, str):
+        domains = [domains]
     server_names = " ".join(domains)
-    root_path = f"/var/www/{project}/htdocs"
 
     conf = f"""
         server {{
@@ -292,7 +293,10 @@ def map_domain(project, new_domain):
 
     # Update nginx and certbot
     configure_nginx(project, domains)
-    install_ssl(domains)
+
+    # Install SSL for each domain individually
+    for domain in domains:
+        install_ssl(domain)
 
     # Update DB
     c.execute("UPDATE projects SET real_domain = ? WHERE project = ?", (new_domain, project))
