@@ -37,7 +37,13 @@ def init_db():
     conn.close()
 
 def get_public_ip():
-    return subprocess.check_output("curl -s ifconfig.me", shell=True).decode().strip()
+    try:
+        ip = subprocess.check_output("curl -s ifconfig.me", shell=True).decode().strip()
+        socket.inet_aton(ip)  # Validate IP
+        return ip
+    except:
+        print(colored("❌ Failed to retrieve valid public IP. Cannot generate sslip.io domain.", "red"))
+        exit(1)
 
 def generate_password(length=12):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
