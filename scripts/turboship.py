@@ -147,26 +147,27 @@ def configure_nginx(project, domains):
     if isinstance(domains, str):
         domains = [domains]
     server_names = " ".join(domains)
+    root_path = f"/var/www/{project}/htdocs"
 
     conf = f"""
-        server {{
-            listen 80;
-            server_name {server_names};
+server {{
+    listen 80;
+    server_name {server_names};
 
-            root {root_path};
-            index index.html;
+    root {root_path};
+    index index.html;
 
-            location ^~ /.well-known/acme-challenge/ {{
-                allow all;
-                default_type "text/plain";
-                root {root_path};
-            }}
+    location ^~ /.well-known/acme-challenge/ {{
+        allow all;
+        default_type "text/plain";
+        root {root_path};
+    }}
 
-            location / {{
-                try_files $uri $uri/ =404;
-            }}
-        }}
-        """
+    location / {{
+        try_files $uri $uri/ =404;
+    }}
+}}
+"""
 
     path = f"/etc/nginx/sites-available/{project}"
     with open(path, "w") as f:
@@ -176,20 +177,20 @@ def configure_nginx(project, domains):
     if not os.path.exists(symlink):
         os.symlink(path, symlink)
 
-    # Create challenge folder if it doesn't exist
-    os.makedirs(os.path.join(root_path, ".well-known/acme-challenge/"), exist_ok=True)
+    # Ensure challenge directory exists
+    os.makedirs(os.path.join(root_path, ".well-known", "acme-challenge"), exist_ok=True)
 
-    # Reload Nginx
+    # Reload nginx
     os.system("nginx -t && systemctl reload nginx")
 
 def install_ssl(domains):
-    args = [
-        "certbot", "--nginx", "--non-interactive", "--agree-tos", "--redirect", "--expand",
-        "-m", f"admin@{domains[0]}"
-    ]
-    for d in domains:
-        args += ["-d", d]
-    subprocess.run(args)
+    if isinstance(domains, str):
+        domains = [domains]
+    domain_flags = " ".join(f"-d {d}" for d in domains)
+    os.system(
+        f"certbot --nginx --non-interactive --agree-tos {domain_flags} "
+        f"-m admin@{domains[0]} --redirect --expand || true"
+    )
 
 def test_project(project):
     conn = sqlite3.connect(DB_PATH)
