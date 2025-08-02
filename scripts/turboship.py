@@ -151,47 +151,61 @@ def create_project(custom_domain=None):
 
 def configure_nginx(project, domains):
     server_names = " ".join(domains)
-    sftp_user = f"{project}_sftp"
-    root_path = f"/var/www/{sftp_user}/htdocs"
-    logs_path = f"/var/www/{sftp_user}/logs"
+    root_path = f"/var/www/{project}_sftp/htdocs"
+    logs_path = f"/var/www/{project}_sftp/logs"
 
     conf = f"""
-    server {{
-        listen 80;
-        server_name {server_names};
+        server {{
+            listen 80;
+            server_name {server_names};
 
-        root {root_path};
-        index index.html;
-
-        access_log {logs_path}/access.log;
-        error_log {logs_path}/error.log;
-
-        location ^~ /.well-known/acme-challenge/ {{
-            allow all;
-            default_type "text/plain";
             root {root_path};
+            index index.html;
+
+            access_log {logs_path}/access.log;
+            error_log {logs_path}/error.log;
+
+            location ^~ /.well-known/acme-challenge/ {{
+                allow all;
+                default_type "text/plain";
+                root {root_path};
+            }}
+
+            location / {{
+                try_files $uri $uri/ =404;
+            }}
         }}
 
-        location / {{
-            try_files $uri $uri/ =404;
-        }}
-    }}
-    """
+        server {{
+            listen 443 ssl;
+            server_name {server_names};
 
-    # Write config to file
+            root {root_path};
+            index index.html;
+
+            ssl_certificate /etc/letsencrypt/live/{domains[0]}/fullchain.pem;
+            ssl_certificate_key /etc/letsencrypt/live/{domains[0]}/privkey.pem;
+
+            access_log {logs_path}/access.log;
+            error_log {logs_path}/error.log;
+
+            location / {{
+                try_files $uri $uri/ =404;
+            }}
+        }}
+        """
+
     path = f"/etc/nginx/sites-available/{project}"
     with open(path, "w") as f:
         f.write(conf)
 
-    # Create symlink
     symlink = f"/etc/nginx/sites-enabled/{project}"
     if not os.path.exists(symlink):
         os.symlink(path, symlink)
 
-    # Ensure challenge folder exists
+    # Create challenge folder
     os.makedirs(os.path.join(root_path, ".well-known/acme-challenge/"), exist_ok=True)
 
-    # Reload Nginx
     os.system("nginx -t && systemctl reload nginx")
 
 def install_ssl(domains):
