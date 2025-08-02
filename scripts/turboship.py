@@ -112,11 +112,11 @@ def create_project(custom_domain=None):
     if "Match Group sftpusers" not in open(sshd_config_path).read():
         with open(sshd_config_path, "a") as sshconf:
             sshconf.write(f"""\nMatch Group sftpusers
-    ChrootDirectory /var/www/%u
+    ChrootDirectory /var/www/%u/..
     ForceCommand internal-sftp
     X11Forwarding no
     AllowTcpForwarding no\n""")
-        os.system("systemctl restart sshd")
+        os.system("systemctl restart ssh")
 
     # Database setup
     if db_type == "mariadb":
