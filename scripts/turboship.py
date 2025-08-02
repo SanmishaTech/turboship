@@ -1,4 +1,4 @@
-# turboship.py - Turboship v0.3
+# turboship.py - Turboship v0.4
 import os
 import subprocess
 import random
@@ -8,9 +8,29 @@ import socket
 import re
 import sqlite3
 from datetime import datetime
+from tabulate import tabulate
+from termcolor import colored
+from pyfiglet import figlet_format
 
-TURBOSHIP_VERSION = "0.3"
+TURBOSHIP_VERSION = "0.4"
 DB_PATH = "/opt/turboship/turboship.db"
+LANDING_PAGE_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Welcome to {project}</title>
+  <style>
+    body {{ font-family: sans-serif; background-color: #f4f4f4; text-align: center; padding: 50px; }}
+    h1 {{ color: #2c3e50; }}
+    p {{ color: #34495e; }}
+  </style>
+</head>
+<body>
+  <h1>🚀 Welcome to {project}!</h1>
+  <p>This site was created using <strong>Turboship</strong>.</p>
+</body>
+</html>
+"""
 
 
 # Ensure database exists
@@ -27,6 +47,7 @@ def init_db():
             db_user TEXT,
             db_pass TEXT,
             sftp_user TEXT,
+            sftp_pass TEXT,
             created_at TEXT
         )
     ''')
@@ -47,7 +68,7 @@ def validate_project_name(name):
 
 
 def prompt_database():
-    print("Choose database type:")
+    print(colored("Choose database type:", "cyan"))
     print("1. MariaDB")
     print("2. PostgreSQL")
     choice = input("Enter choice [1/2]: ").strip()
@@ -56,14 +77,14 @@ def prompt_database():
     elif choice == "2":
         return "postgres"
     else:
-        print("Invalid input. Try again.")
+        print(colored("Invalid input. Try again.", "red"))
         return prompt_database()
 
 
 def create_project(dry_run=False):
     project = input("Enter project name: ").strip()
     if not validate_project_name(project):
-        print("Invalid project name. Only alphanumeric characters, dashes and underscores allowed.")
+        print(colored("Invalid project name. Only alphanumeric characters, dashes and underscores allowed.", "red"))
         return
 
     db_type = prompt_database()
@@ -79,24 +100,31 @@ def create_project(dry_run=False):
 
     now = datetime.now().isoformat()
 
-    print(f"\nTurboship v{TURBOSHIP_VERSION} - Project Summary:")
-    print(f"  Project Name : {project}")
-    print(f"  Domain       : https://{domain}")
-    print(f"  SFTP User    : {sftp_user}")
-    print(f"  SFTP Pass    : {sftp_pass}")
-    print(f"  DB Type      : {db_type}")
-    print(f"  DB Name      : {db_name}")
-    print(f"  DB User      : {db_user}")
-    print(f"  DB Password  : {db_pass}")
-    print(f"  Created At   : {now}\n")
+    print(colored(figlet_format("Turboship"), "green"))
+    print(colored(f"Turboship v{TURBOSHIP_VERSION} - Project Summary:", "yellow"))
+    print(f"  🚀 Project Name : {colored(project, 'cyan')}")
+    print(f"  🌐 Domain       : {colored('https://' + domain, 'green')}")
+    print(f"  📦 SFTP User    : {sftp_user}")
+    print(f"  🔑 SFTP Pass    : {sftp_pass}")
+    print(f"  🛢️  DB Type      : {db_type}")
+    print(f"  🗄️  DB Name      : {db_name}")
+    print(f"  👤 DB User      : {db_user}")
+    print(f"  🔐 DB Password  : {db_pass}")
+    print(f"  🕒 Created At   : {now}\n")
 
     if dry_run:
         return
 
-    os.makedirs(f"/var/www/{project}/htdocs", exist_ok=True)
+    project_path = f"/var/www/{project}/htdocs"
+    os.makedirs(project_path, exist_ok=True)
+
+    # Create default landing page
+    with open(os.path.join(project_path, "index.html"), "w") as f:
+        f.write(LANDING_PAGE_TEMPLATE.format(project=project))
+
     os.system(f"adduser --disabled-password --gecos '' {sftp_user}")
     subprocess.run(['bash', '-c', f"echo '{sftp_user}:{sftp_pass}' | chpasswd"])
-    os.system(f"usermod -d /var/www/{project}/htdocs {sftp_user}")
+    os.system(f"usermod -d {project_path} {sftp_user}")
     os.system(f"chown -R {sftp_user}:{sftp_user} /var/www/{project}")
 
     if db_type == "mariadb":
@@ -106,7 +134,7 @@ def create_project(dry_run=False):
 
     configure_nginx(project, domain)
     install_ssl(domain)
-    save_to_db(project, domain, db_type, db_name, db_user, db_pass, sftp_user, now)
+    save_to_db(project, domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, now)
 
 
 def create_mariadb_user(user, password, db):
@@ -153,11 +181,11 @@ def install_ssl(domain):
     os.system(f"certbot --nginx --non-interactive --agree-tos -d {domain} -m admin@{domain} --redirect")
 
 
-def save_to_db(project, domain, db_type, db_name, db_user, db_pass, sftp_user, created_at):
+def save_to_db(project, domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, created_at):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("INSERT INTO projects VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-              (project, domain, db_type, db_name, db_user, db_pass, sftp_user, created_at))
+    c.execute("INSERT INTO projects VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              (project, domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, created_at))
     conn.commit()
     conn.close()
 
@@ -168,9 +196,11 @@ def list_projects():
     c.execute("SELECT * FROM projects")
     rows = c.fetchall()
     if not rows:
-        print("No projects found.")
-    for row in rows:
-        print(f"Project: {row[0]}, Domain: {row[1]}, DB: {row[2]} ({row[3]}), SFTP: {row[6]}, Created: {row[7]}")
+        print(colored("No projects found.", "red"))
+    else:
+        headers = ["Project", "Domain", "DB Type", "DB Name", "DB User", "DB Pass", "SFTP User", "SFTP Pass", "Created At"]
+        print(colored("\nYour Projects:", "green"))
+        print(tabulate(rows, headers=headers, tablefmt="fancy_grid"))
     conn.close()
 
 
@@ -195,28 +225,27 @@ def remove_project():
     # Backup
     backup = input("Do you want to take a backup of the project folder? (y/N): ").strip().lower()
     if backup == 'y':
+        os.makedirs("/opt/turboship/backups", exist_ok=True)
         os.system(f"tar czf /opt/turboship/backups/{project}.tar.gz /var/www/{project}")
 
-    # Remove nginx
     os.remove(f"/etc/nginx/sites-available/{project}")
     os.unlink(f"/etc/nginx/sites-enabled/{project}")
     os.system("nginx -t && systemctl reload nginx")
 
-    # Remove files and user
     os.system(f"rm -rf /var/www/{project}")
     os.system(f"deluser --remove-home {sftp_user}")
 
-    # Remove from DB
     c.execute("DELETE FROM projects WHERE project = ?", (project,))
     conn.commit()
     conn.close()
 
-    print(f"Project '{project}' removed successfully.")
+    print(colored(f"Project '{project}' removed successfully.", "yellow"))
 
 
 def main():
     init_db()
-    print(f"Turboship v{TURBOSHIP_VERSION}: Server Management CLI")
+    print(colored(figlet_format("Turboship"), "green"))
+    print(colored(f"Turboship v{TURBOSHIP_VERSION}: Server Management CLI", "blue"))
     print("1. Create Project")
     print("2. Remove Project")
     print("3. List Projects")
@@ -232,7 +261,7 @@ def main():
     elif action == "4":
         create_project(dry_run=True)
     else:
-        print("Invalid option.")
+        print(colored("Invalid option.", "red"))
 
 
 if __name__ == "__main__":
