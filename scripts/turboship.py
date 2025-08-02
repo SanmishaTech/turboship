@@ -260,6 +260,29 @@ def remove_project(project):
 
     print(colored(f"✅ Project '{project}' deleted successfully.", "green"))
 
+def map_domain(project, new_domain):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT temp_domain FROM projects WHERE project = ?", (project,))
+    row = c.fetchone()
+    if not row:
+        print(colored(f"❌ Project '{project}' not found in DB.", "red"))
+        return
+
+    temp_domain = row[0]
+    domains = [temp_domain, new_domain]
+
+    # Update nginx and certbot
+    configure_nginx(project, domains)
+    install_ssl(domains)
+
+    # Update DB
+    c.execute("UPDATE projects SET real_domain = ? WHERE project = ?", (new_domain, project))
+    conn.commit()
+    conn.close()
+
+    print(colored(f"✅ Domain for '{project}' updated to '{new_domain}'", "green"))
+
 def main():
     init_db()
     parser = argparse.ArgumentParser(
