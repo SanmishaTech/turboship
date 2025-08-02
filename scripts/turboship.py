@@ -88,7 +88,10 @@ def create_project(custom_domain=None):
     os.makedirs(project_path, exist_ok=True)
 
     # Landing page
-    with open("landing_template.html") as src:
+    script_dir = os.path.dirname(os.path.abspath(__file__))    
+    template_path = os.path.join(script_dir, "landing_template.html")
+
+    with open(template_path) as src:
         content = src.read().replace("{project}", project).replace("{github}", GITHUB_URL)
     with open(os.path.join(project_path, "index.html"), "w") as dst:
         dst.write(content)
