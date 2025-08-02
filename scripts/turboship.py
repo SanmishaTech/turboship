@@ -88,6 +88,10 @@ def create_project(custom_domain=None):
     print(f"  🔐 DB Password  : {db_pass}")
     print(f"  🕒 Created At   : {now}\n")
 
+    # Create user with SSH + SFTP (no chroot)
+    os.system(f"useradd -m -d {project_root} -s /bin/bash {sftp_user}")
+    subprocess.run(["bash", "-c", f"echo '{sftp_user}:{sftp_pass}' | chpasswd"])
+
     # Directory structure
     project_root = f"/var/www/{sftp_user}"
     project_path = os.path.join(project_root, "htdocs")
@@ -97,7 +101,6 @@ def create_project(custom_domain=None):
     os.makedirs(logs_path, exist_ok=True)
 
     # Set permissions
-    os.chown(project_path, 0, 0)
     os.system(f"chown -R {sftp_user}:{sftp_user} {project_path}")
     os.system(f"chown -R www-data:www-data {logs_path}")
 
