@@ -74,7 +74,21 @@ def create_project(custom_domain=None):
     real_domain = custom_domain.strip() if custom_domain else ""
     now = datetime.now().isoformat()
 
-    # Project Paths
+    print(colored(figlet_format("Turboship"), "green"))
+    print(colored(f"Turboship v{TURBOSHIP_VERSION} - Project Summary:", "yellow"))
+    print(f"  🚀 Project Name : {colored(project, 'cyan')}")
+    print(f"  🌐 Temp Domain  : {colored('https://' + temp_domain, 'green')}")
+    if real_domain:
+        print(f"  🏷️ Real Domain  : {colored('https://' + real_domain, 'green')}")
+    print(f"  📦 SFTP User    : {sftp_user}")
+    print(f"  🔑 SFTP Pass    : {sftp_pass}")
+    print(f"  🛢️  DB Type      : {db_type}")
+    print(f"  🗄️  DB Name      : {db_name}")
+    print(f"  👤 DB User      : {db_user}")
+    print(f"  🔐 DB Password  : {db_pass}")
+    print(f"  🕒 Created At   : {now}\n")
+
+    # Directory structure
     project_root = f"/var/www/{sftp_user}"
     project_path = os.path.join(project_root, "htdocs")
     os.makedirs(project_path, exist_ok=True)
@@ -86,13 +100,15 @@ def create_project(custom_domain=None):
     with open(os.path.join(project_path, "index.html"), "w") as dst:
         dst.write(content)
 
-    # Create Linux user (SSH + SFTP)
-    os.system(f"useradd -m -d {project_root} -s /bin/bash {sftp_user}")
+    # Create user with SSH + SFTP (no chroot)
+    os.system(f"useradd -m -d /var/www/{project} -s /bin/bash {sftp_user}")
     subprocess.run(["bash", "-c", f"echo '{sftp_user}:{sftp_pass}' | chpasswd"])
-    os.system(f"chown -R {sftp_user}:{sftp_user} {project_root}")
-    os.chmod(project_root, 0o755)
 
-    # Database setup
+    # Ensure project directory exists and set permissions
+    os.makedirs(project_path, exist_ok=True)
+    os.system(f"chown -R {sftp_user}:{sftp_user} /var/www/{project}")
+
+    # Database
     if db_type == "mariadb":
         sql = f"""
         CREATE DATABASE IF NOT EXISTS {db_name};
@@ -109,40 +125,23 @@ def create_project(custom_domain=None):
         for cmd in commands:
             subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', cmd])
 
-    # Combine domains and configure nginx
-    domains = [temp_domain]
+    # Nginx + SSL
+    configure_nginx(project, temp_domain)
+    install_ssl(temp_domain)
+
     if real_domain:
-        domains.append(real_domain)
+        configure_nginx(project, real_domain)
+        install_ssl(real_domain)
 
-    configure_nginx(project, domains)
-    for d in domains:
-        install_ssl(d)
-
-    # Save project to DB
+    # Save in SQLite
     conn = sqlite3.connect(DB_PATH)
-    conn.execute(
-        """INSERT INTO projects
-           (project, temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (project, temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, now)
-    )
+    conn.execute("""
+        INSERT INTO projects 
+        (project, temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (project, temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, now))
     conn.commit()
     conn.close()
-
-    # Display Summary
-    print(colored(figlet_format("Turboship"), "green"))
-    print(colored(f"Turboship v{TURBOSHIP_VERSION} - Project Summary:", "yellow"))
-    print(f"  🚀 Project Name : {colored(project, 'cyan')}")
-    print(f"  🌐 Temp Domain  : {colored('https://' + temp_domain, 'green')}")
-    if real_domain:
-        print(f"  🏷️ Real Domain  : {colored('https://' + real_domain, 'green')}")
-    print(f"  📦 SFTP User    : {sftp_user}")
-    print(f"  🔑 SFTP Pass    : {sftp_pass}")
-    print(f"  🛢️  DB Type      : {db_type}")
-    print(f"  🗄️  DB Name      : {db_name}")
-    print(f"  👤 DB User      : {db_user}")
-    print(f"  🔐 DB Password  : {db_pass}")
-    print(f"  🕒 Created At   : {now}")
 
 def configure_nginx(project, domains):
     server_names = " ".join(domains)
