@@ -87,6 +87,10 @@ def create_project(custom_domain=None):
     project_path = f"/var/www/{project}/htdocs"
     os.makedirs(project_path, exist_ok=True)
 
+    # Prepare .well-known directory for Certbot
+    challenge_dir = os.path.join(project_path, ".well-known", "acme-challenge")
+    os.makedirs(challenge_dir, exist_ok=True)
+
     # Landing page
     script_dir = os.path.dirname(os.path.abspath(__file__))    
     template_path = os.path.join(script_dir, "landing_template.html")
@@ -142,25 +146,43 @@ def create_project(custom_domain=None):
     conn.close()
 
 def configure_nginx(project, domains):
-    domain_line = " ".join(domains)
+    server_names = " ".join(domains)
+    root_path = f"/var/www/{project}/htdocs"
+
     conf = f"""
-server {{
-    listen 80;
-    server_name {domain_line};
-    root /var/www/{project}/htdocs;
-    index index.html;
-    location / {{
-        try_files $uri $uri/ =404;
-    }}
-}}
-"""
-    conf_path = f"/etc/nginx/sites-available/{project}"
-    with open(conf_path, "w") as f:
+        server {{
+            listen 80;
+            server_name {server_names};
+
+            root {root_path};
+            index index.html;
+
+            location ^~ /.well-known/acme-challenge/ {{
+                allow all;
+                default_type "text/plain";
+                root {root_path};
+            }}
+
+            location / {{
+                try_files $uri $uri/ =404;
+            }}
+        }}
+        """
+
+    path = f"/etc/nginx/sites-available/{project}"
+    with open(path, "w") as f:
         f.write(conf)
-    symlink_path = f"/etc/nginx/sites-enabled/{project}"
-    if not os.path.exists(symlink_path):
-        os.symlink(conf_path, symlink_path)
+
+    symlink = f"/etc/nginx/sites-enabled/{project}"
+    if not os.path.exists(symlink):
+        os.symlink(path, symlink)
+
+    # Create challenge folder if it doesn't exist
+    os.makedirs(os.path.join(root_path, ".well-known/acme-challenge/"), exist_ok=True)
+
+    # Reload Nginx
     os.system("nginx -t && systemctl reload nginx")
+
 
 
 def install_ssl(domains):
