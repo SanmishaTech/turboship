@@ -169,6 +169,43 @@ def install_ssl(domains):
         args += ["-d", d]
     subprocess.run(args)
 
+def test_project(project):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT temp_domain, real_domain, db_type, db_name, db_user, db_pass FROM projects WHERE project = ?", (project,))
+    row = c.fetchone()
+    if not row:
+        print(colored("❌ Project not found.", "red"))
+        return
+
+    temp_domain, real_domain, db_type, db_name, db_user, db_pass = row
+    print(colored(f"\nTesting project '{project}':", "cyan"))
+
+    for domain in filter(None, [temp_domain, real_domain]):
+        print(f"🌐 Testing domain: {domain}")
+        try:
+            socket.gethostbyname(domain)
+            print(colored("✅ DNS Resolved", "green"))
+        except:
+            print(colored("❌ DNS failed", "red"))
+
+    if db_type == "mariadb":
+        result = subprocess.call(["mysql", "-h", "127.0.0.1", "-u", db_user, f"-p{db_pass}", "-e", "SHOW DATABASES;"])
+    elif db_type == "postgres":
+        env = os.environ.copy()
+        env['PGPASSWORD'] = db_pass
+        result = subprocess.call(["psql", "-U", db_user, "-d", db_name, "-c", "\\l"], env=env)
+
+    print(colored("✅ DB Connection OK" if result == 0 else "❌ DB Connection Failed", "green" if result == 0 else "red"))
+
+def list_projects():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT project, temp_domain, real_domain, db_type, db_name, db_user, sftp_user, created_at FROM projects")
+    rows = c.fetchall()
+    headers = ["Project", "Temp Domain", "Real Domain", "DB Type", "DB Name", "DB User", "SFTP User", "Created At"]
+    print(tabulate(rows, headers=headers, tablefmt="fancy_grid"))
+    conn.close()
 
 def remove_project(project):
     conn = sqlite3.connect(DB_PATH)
