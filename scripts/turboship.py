@@ -55,7 +55,7 @@ def prompt_database():
 def create_project(custom_domain=None):
     project = input("Enter project name: ").strip()
     if not validate_project_name(project):
-        print(colored("❌ Invalid project name. Use only letters, numbers, dashes, underscores.", "red"))
+        print(colored("Invalid project name. Use only letters, numbers, dashes, underscores.", "red"))
         return
 
     db_type = prompt_database()
@@ -65,17 +65,15 @@ def create_project(custom_domain=None):
     sftp_pass = generate_password()
     db_name = f"{project}_db"
     temp_domain = f"{project}.{get_public_ip()}.sslip.io"
-    real_domain = custom_domain if custom_domain else None
-    domains = [temp_domain] + ([real_domain] if real_domain else [])
+    real_domain = custom_domain if custom_domain else ""
     now = datetime.now().isoformat()
 
-    # Project Summary
     print(colored(figlet_format("Turboship"), "green"))
     print(colored(f"Turboship v{TURBOSHIP_VERSION} - Project Summary:", "yellow"))
     print(f"  🚀 Project Name : {colored(project, 'cyan')}")
-    print(f"  🌐 Temp Domain  : https://{temp_domain}")
+    print(f"  🌐 Temp Domain  : {colored('https://' + temp_domain, 'green')}")
     if real_domain:
-        print(f"  🌐 Real Domain  : https://{real_domain}")
+        print(f"  🏷️ Real Domain  : {colored('https://' + real_domain, 'green')}")
     print(f"  📦 SFTP User    : {sftp_user}")
     print(f"  🔑 SFTP Pass    : {sftp_pass}")
     print(f"  🛢️  DB Type      : {db_type}")
@@ -84,41 +82,32 @@ def create_project(custom_domain=None):
     print(f"  🔐 DB Password  : {db_pass}")
     print(f"  🕒 Created At   : {now}\n")
 
-    project_path = f"/var/www/{project}/htdocs"
+    # Directory structure
+    project_root = f"/var/www/{sftp_user}"
+    project_path = os.path.join(project_root, "htdocs")
     os.makedirs(project_path, exist_ok=True)
 
-    # Prepare .well-known directory for Certbot
-    challenge_dir = os.path.join(project_path, ".well-known", "acme-challenge")
-    os.makedirs(challenge_dir, exist_ok=True)
-
     # Landing page
-    script_dir = os.path.dirname(os.path.abspath(__file__))    
-    template_path = os.path.join(script_dir, "landing_template.html")
-
-    with open(template_path) as src:
+    with open("landing_template.html") as src:
         content = src.read().replace("{project}", project).replace("{github}", GITHUB_URL)
     with open(os.path.join(project_path, "index.html"), "w") as dst:
         dst.write(content)
 
-    # SFTP user setup
-    os.system("groupadd sftpusers || true")
-    os.system(f"useradd -m -d /var/www/{project} -s /usr/sbin/nologin -G sftpusers {sftp_user}")
+    # Create user with SSH + SFTP (no chroot)
+    os.system(f"useradd -m -d /var/www/{project} -s /bin/bash {sftp_user}")
     subprocess.run(["bash", "-c", f"echo '{sftp_user}:{sftp_pass}' | chpasswd"])
+
+    # Ensure project directory exists
     os.makedirs(project_path, exist_ok=True)
+    os.chown(project_path, 0, 0)
+    os.system(f"chown -R {sftp_user}:{sftp_user} /var/www/{project}")
+
+    # Permissions
+    os.system(f"chown root:root {project_root}")
+    os.chmod(project_root, 0o755)
     os.system(f"chown -R {sftp_user}:{sftp_user} {project_path}")
 
-    # SSH config
-    sshd_config_path = "/etc/ssh/sshd_config"
-    if "Match Group sftpusers" not in open(sshd_config_path).read():
-        with open(sshd_config_path, "a") as sshconf:
-            sshconf.write(f"""\nMatch Group sftpusers
-    ChrootDirectory /var/www/%u/..
-    ForceCommand internal-sftp
-    X11Forwarding no
-    AllowTcpForwarding no\n""")
-        os.system("systemctl restart ssh")
-
-    # Database setup
+    # Database
     if db_type == "mariadb":
         sql = f"""
         CREATE DATABASE IF NOT EXISTS {db_name};
@@ -128,20 +117,24 @@ def create_project(custom_domain=None):
         """
         subprocess.run(["mysql", "-u", "root", "-e", sql])
     elif db_type == "postgres":
-        subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c',
-                        f"CREATE USER {db_user} WITH PASSWORD '{db_pass}';"])
-        subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c',
-                        f"CREATE DATABASE {db_name} OWNER {db_user};"])
+        commands = [
+            f"CREATE USER {db_user} WITH PASSWORD '{db_pass}';",
+            f"CREATE DATABASE {db_name} OWNER {db_user};"
+        ]
+        for cmd in commands:
+            subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', cmd])
 
-    # Nginx and SSL
-    configure_nginx(project, domains)
-    install_ssl(domains)
+    # Nginx + SSL
+    configure_nginx(project, temp_domain)
+    install_ssl(temp_domain)
+    if real_domain:
+        configure_nginx(project, real_domain)
+        install_ssl(real_domain)
 
-    # Save to DB
+    # Save in SQLite
     conn = sqlite3.connect(DB_PATH)
-    conn.execute("INSERT INTO projects VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (
-        project, temp_domain, real_domain, db_type, db_name,
-        db_user, db_pass, sftp_user, sftp_pass, now))
+    conn.execute("INSERT INTO projects (project, temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 (project, temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, now))
     conn.commit()
     conn.close()
 

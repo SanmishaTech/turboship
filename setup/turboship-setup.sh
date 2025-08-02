@@ -47,12 +47,21 @@ echo "host    all             all             0.0.0.0/0               md5" | sud
 sudo sed -i "s/^#listen_addresses = 'localhost'/listen_addresses = '*'/'" /etc/postgresql/*/main/postgresql.conf
 sudo systemctl restart postgresql
 
-# 9. Configure SSH to allow password authentication for SFTP
+echo "🔧 Configuring SSH for SFTP and Password login..."
+
+# SSH config: Enable password & interactive auth (but no chroot config!)
 sudo sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
 sudo sed -i 's/^#\?KbdInteractiveAuthentication.*/KbdInteractiveAuthentication yes/' /etc/ssh/sshd_config
 sudo sed -i 's/^#\?ChallengeResponseAuthentication.*/ChallengeResponseAuthentication no/' /etc/ssh/sshd_config
 sudo sed -i 's/^#\?UsePAM.*/UsePAM yes/' /etc/ssh/sshd_config
+
+# Allow SSH shell access (remove any existing chroot Match Group block if present)
+sudo sed -i '/Match Group sftpusers/,+4d' /etc/ssh/sshd_config
+
+# Restart SSH to apply changes
 sudo systemctl restart ssh
+
+echo "✅ SSH configuration updated for SFTP users."
 
 # 10. Done
 echo "✅ Turboship environment setup is complete. Ready to launch projects!"
