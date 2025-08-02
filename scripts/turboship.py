@@ -14,23 +14,7 @@ from pyfiglet import figlet_format
 
 TURBOSHIP_VERSION = "0.4"
 DB_PATH = "/opt/turboship/turboship.db"
-LANDING_PAGE_TEMPLATE = """
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Welcome to {project}</title>
-  <style>
-    body {{ font-family: sans-serif; background-color: #f4f4f4; text-align: center; padding: 50px; }}
-    h1 {{ color: #2c3e50; }}
-    p {{ color: #34495e; }}
-  </style>
-</head>
-<body>
-  <h1>🚀 Welcome to {project}!</h1>
-  <p>This site was created using <strong>Turboship</strong>.</p>
-</body>
-</html>
-"""
+GITHUB_URL = "https://github.com/SanmishaTech/turboship"
 
 
 # Ensure database exists
@@ -118,9 +102,11 @@ def create_project(dry_run=False):
     project_path = f"/var/www/{project}/htdocs"
     os.makedirs(project_path, exist_ok=True)
 
-    # Create default landing page
-    with open(os.path.join(project_path, "index.html"), "w") as f:
-        f.write(LANDING_PAGE_TEMPLATE.format(project=project))
+    # Copy template HTML to index.html
+    with open("landing_template.html") as src:
+        content = src.read().replace("{project}", project).replace("{github}", GITHUB_URL)
+    with open(os.path.join(project_path, "index.html"), "w") as dst:
+        dst.write(content)
 
     os.system(f"adduser --disabled-password --gecos '' {sftp_user}")
     subprocess.run(['bash', '-c', f"echo '{sftp_user}:{sftp_pass}' | chpasswd"])
