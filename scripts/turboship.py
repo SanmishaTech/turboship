@@ -71,17 +71,19 @@ def create_project(dry_run=False):
     sftp_user = f"{project}_sftp"
     db_user = f"{project}_dbu"
     db_pass = generate_password()
+    sftp_pass = generate_password()
     db_name = f"{project}_db"
 
     public_ip = get_public_ip()
     domain = f"{project}.{public_ip}.sslip.io"
-    
+
     now = datetime.now().isoformat()
 
     print(f"\nTurboship v{TURBOSHIP_VERSION} - Project Summary:")
     print(f"  Project Name : {project}")
     print(f"  Domain       : https://{domain}")
     print(f"  SFTP User    : {sftp_user}")
+    print(f"  SFTP Pass    : {sftp_pass}")
     print(f"  DB Type      : {db_type}")
     print(f"  DB Name      : {db_name}")
     print(f"  DB User      : {db_user}")
@@ -93,6 +95,8 @@ def create_project(dry_run=False):
 
     os.makedirs(f"/var/www/{project}/htdocs", exist_ok=True)
     os.system(f"adduser --disabled-password --gecos '' {sftp_user}")
+    subprocess.run(['bash', '-c', f"echo '{sftp_user}:{sftp_pass}' | chpasswd"])
+    os.system(f"usermod -d /var/www/{project}/htdocs {sftp_user}")
     os.system(f"chown -R {sftp_user}:{sftp_user} /var/www/{project}")
 
     if db_type == "mariadb":
