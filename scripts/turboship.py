@@ -94,11 +94,15 @@ def create_project(custom_domain=None):
     os.makedirs(project_path, exist_ok=True)
 
     # Landing page
-    landing_path = os.path.join(os.path.dirname(__file__), "landing_template.html")
-    with open(landing_path) as src:
-        content = src.read().replace("{project}", project).replace("{github}", GITHUB_URL)
-    with open(os.path.join(project_path, "index.html"), "w") as dst:
-        dst.write(content)
+    landing_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "landing_template.html")
+    if os.path.exists(landing_path):
+        with open(landing_path) as src:
+            content = src.read().replace("{project}", project).replace("{github}", GITHUB_URL)
+        with open(os.path.join(project_path, "index.html"), "w") as dst:
+            dst.write(content)
+    else:
+        print(colored("⚠️ landing_template.html not found — skipping landing page copy.", "yellow"))
+
 
     # Create user with SSH + SFTP (no chroot)
     os.system(f"useradd -m -d /var/www/{project} -s /bin/bash {sftp_user}")
