@@ -279,9 +279,9 @@ def test_project(project):
 def list_apps():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT project, temp_domain, real_domain, db_type, db_name, db_user, sftp_user, created_at FROM projects")
+    c.execute("SELECT app, temp_domain, real_domain, db_type, db_name, db_user, sftp_user, created_at FROM apps")
     rows = c.fetchall()
-    headers = ["Project", "Temp Domain", "Real Domain", "DB Type", "DB Name", "DB User", "SFTP User", "Created At"]
+    headers = ["App", "Temp Domain", "Real Domain", "DB Type", "DB Name", "DB User", "SFTP User", "Created At"]
     print(tabulate(rows, headers=headers, tablefmt="fancy_grid"))
     conn.close()
 
