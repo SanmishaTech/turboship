@@ -105,6 +105,16 @@ def create_app():
     os.system(f"chown -R {sftp_user}:{sftp_user} {api_path}")
     os.system(f"chown -R www-data:www-data {logs_path}")
 
+    # Ensure proper permissions for htdocs directory
+    os.system(f"chown -R www-data:www-data {app_path}")
+    os.system(f"chmod -R 755 {app_path}")
+
+    # Permissions for abc_sftp user
+    os.system(f"chown -R {sftp_user}:{sftp_user} {logs_path}")
+    os.system(f"chmod -R 755 {logs_path}")
+    os.system(f"chown -R {sftp_user}:{sftp_user} {api_path}")
+    os.system(f"chmod -R 755 {api_path}")
+
     # Landing page
     landing_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "landing_template.html")
     if os.path.exists(landing_path):
