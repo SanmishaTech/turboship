@@ -220,7 +220,7 @@ def create_app():
     # Set group permissions for the root directory
     os.system(f"chmod -R g+rwX {app_root}")
 
-def configure_nginx(project, domains):
+def configure_nginx(project, domains, enable_ssl=False):
     if isinstance(domains, str):
         domains = [domains]
     server_names = " ".join(domains)
@@ -234,13 +234,13 @@ def configure_nginx(project, domains):
         }}
 
         server {{
-            listen 443 ssl;
+            listen 443{'' if enable_ssl else ' ssl'};
             server_name {server_names};
 
-            ssl_certificate /etc/letsencrypt/live/{domains[0]}/fullchain.pem; # managed by Certbot
-            ssl_certificate_key /etc/letsencrypt/live/{domains[0]}/privkey.pem; # managed by Certbot
-            include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
-            ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+            {f'ssl_certificate /etc/letsencrypt/live/{domains[0]}/fullchain.pem; # managed by Certbot\n' if enable_ssl else ''}
+            {f'ssl_certificate_key /etc/letsencrypt/live/{domains[0]}/privkey.pem; # managed by Certbot\n' if enable_ssl else ''}
+            {f'include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot\n' if enable_ssl else ''}
+            {f'ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot\n' if enable_ssl else ''}
 
             root {root_path};
             index index.html;
