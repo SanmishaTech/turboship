@@ -271,21 +271,45 @@ def configure_nginx(project, domains):
         """
 
     path = f"/etc/nginx/sites-available/{project}"
-    with open(path, "w") as f:
-        f.write(conf)
+    try:
+        with open(path, "w") as f:
+            f.write(conf)
+        print(colored(f"✅ NGINX configuration written to {path}", "green"))
+    except Exception as e:
+        print(colored(f"❌ Failed to write NGINX configuration: {e}", "red"))
+        return
 
     symlink = f"/etc/nginx/sites-enabled/{project}"
-    if not os.path.exists(symlink):
-        os.symlink(path, symlink)
+    try:
+        if not os.path.exists(symlink):
+            os.symlink(path, symlink)
+        print(colored(f"✅ Symlink created for {symlink}", "green"))
+    except Exception as e:
+        print(colored(f"❌ Failed to create symlink: {e}", "red"))
+        return
 
-    os.makedirs(os.path.join(root_path, ".well-known/acme-challenge/"), exist_ok=True)
+    try:
+        os.makedirs(os.path.join(root_path, ".well-known/acme-challenge/"), exist_ok=True)
+        print(colored("✅ .well-known/acme-challenge directory created", "green"))
+    except Exception as e:
+        print(colored(f"❌ Failed to create .well-known/acme-challenge directory: {e}", "red"))
+        return
 
-    os.system("nginx -t && systemctl reload nginx")
+    try:
+        result = os.system("nginx -t && systemctl reload nginx")
+        if result != 0:
+            print(colored("❌ NGINX reload failed. Check configuration syntax.", "red"))
+        else:
+            print(colored("✅ NGINX reloaded successfully.", "green"))
+    except Exception as e:
+        print(colored(f"❌ Failed to reload NGINX: {e}", "red"))
 
 def install_ssl(domains):
     if isinstance(domains, str):
         domains = [domains]
     domain_flags = " ".join(f"-d {d}" for d in domains)
+
+    print(colored(f"🔧 Starting SSL installation for domains: {', '.join(domains)}", "cyan"))
 
     # Attempt to generate SSL certificates
     certbot_command = (
@@ -293,6 +317,7 @@ def install_ssl(domains):
         f"-m admin@{domains[0]} --redirect --expand"
     )
 
+    print(colored(f"🔧 Running Certbot command: {certbot_command}", "cyan"))
     result = os.system(certbot_command)
 
     if result != 0:
@@ -312,9 +337,11 @@ def install_ssl(domains):
                 with open(nginx_path, "w") as f:
                     f.write(conf)
 
+        print(colored("🔧 Temporarily disabled SSL in NGINX configurations.", "yellow"))
         os.system("nginx -t && systemctl reload nginx")
 
         # Retry Certbot
+        print(colored(f"🔧 Retrying Certbot command: {certbot_command}", "cyan"))
         result = os.system(certbot_command)
 
         if result != 0:
@@ -326,6 +353,7 @@ def install_ssl(domains):
                 with open(nginx_path, "w") as f:
                     f.write(original_conf)
 
+            print(colored("🔧 Restored original NGINX configurations.", "yellow"))
             os.system("nginx -t && systemctl reload nginx")
             return
 
@@ -337,6 +365,7 @@ def install_ssl(domains):
             with open(nginx_path, "w") as f:
                 f.write(original_conf)
 
+        print(colored("🔧 Restored original NGINX configurations.", "yellow"))
         os.system("nginx -t && systemctl reload nginx")
     else:
         print(colored("✅ SSL certificates generated successfully.", "green"))
