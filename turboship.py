@@ -369,6 +369,10 @@ def remove_app(app):
     conn.commit()
     conn.close()
 
+    # Remove the app's root directory
+    if os.path.exists(app_root):
+        subprocess.run(["rm", "-rf", app_root], stderr=subprocess.DEVNULL)
+
     print(colored(f"✅ App '{app}' deleted successfully.", "green"))
 
 def map_domain(app, new_domain):
