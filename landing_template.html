@@ -13,13 +13,14 @@
     }
 
     h1 {
-      font-size: 3rem;
+      font-size: 3.5rem;
       margin-bottom: 20px;
       color: #2c3e50;
+      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
     }
 
     p {
-      font-size: 1.2rem;
+      font-size: 1.3rem;
       margin-top: 10px;
       color: #555;
     }
@@ -28,11 +29,12 @@
       display: inline-block;
       background: #3498db;
       color: #fff;
-      padding: 8px 14px;
-      border-radius: 6px;
+      padding: 10px 16px;
+      border-radius: 8px;
       margin-top: 20px;
-      font-size: 1rem;
+      font-size: 1.1rem;
       font-weight: 600;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
 
     .footer {
@@ -48,34 +50,53 @@
 
     .github-link {
       display: inline-block;
-      margin-top: 25px;
+      margin-top: 30px;
       color: #333;
       font-weight: bold;
-      font-size: 1rem;
+      font-size: 1.1rem;
       text-decoration: none;
+      padding: 10px 20px;
+      border: 2px solid #3498db;
+      border-radius: 6px;
+      transition: background 0.3s, color 0.3s;
     }
 
     .github-link:hover {
-      text-decoration: underline;
+      background: #3498db;
+      color: #fff;
+      text-decoration: none;
     }
 
     .emoji {
-      font-size: 2.5rem;
+      font-size: 3rem;
+      margin-bottom: 20px;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 40px;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     }
   </style>
 </head>
 <body>
-  <div class="emoji">🚀</div>
-  <h1>Welcome to <strong>{project}</strong></h1>
-  <p>Your project has been successfully deployed using <strong>Turboship</strong>.</p>
-  <p class="badge">HTTPS Secured &nbsp;|&nbsp; SFTP Enabled &nbsp;|&nbsp; Database Ready</p>
+  <div class="container">
+    <div class="emoji">🚀</div>
+    <h1>Welcome to <strong>{project}</strong></h1>
+    <p>Your project has been successfully deployed using <strong>Turboship</strong>.</p>
+    <p class="badge">HTTPS Secured &nbsp;|&nbsp; SFTP Enabled &nbsp;|&nbsp; Database Ready</p>
 
-  <a class="github-link" href="https://github.com/SanmishaTech/turboship" target="_blank">
-    📂 View Project on GitHub
-  </a>
+    <br>
+    <a class="github-link" href="https://github.com/SanmishaTech/turboship" target="_blank">
+      📂 View Project on GitHub
+    </a>
 
-  <div class="footer">
-    Developed by <a href="https://sanmisha.com" target="_blank">Sanmisha Technologies</a>
+    <div class="footer">
+      Developed by <a href="https://sanmisha.com" target="_blank">Sanmisha Technologies</a>
+    </div>
   </div>
 </body>
 </html>

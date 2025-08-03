@@ -13,7 +13,6 @@ from pyfiglet import figlet_format
 
 TURBOSHIP_VERSION = "0.7"
 DB_PATH = "/opt/turboship/turboship.db"
-GITHUB_URL = "https://github.com/SanmishaTech/turboship"
 
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -144,7 +143,7 @@ def create_app():
     landing_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "landing_template.html")
     if os.path.exists(landing_path):
         with open(landing_path) as src:
-            content = src.read().replace("{app_name}", app_name).replace("{github}", GITHUB_URL)
+            content = src.read().replace("{app_name}", app_name)
         with open(os.path.join(app_path, "index.html"), "w") as dst:
             dst.write(content)
     else:
