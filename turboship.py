@@ -347,22 +347,22 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter
     )
 
-    parser.add_argument("create", action="store_true", required=False,
+    parser.add_argument("create", action="store_true",
                         help="Create a new app with optional real domain\n  Example: create --domain yourdomain.com")
-    parser.add_argument("test", metavar="APP", required=False,
+    parser.add_argument("test", metavar="APP",
                         help="Run health checks for an app\n  Example: test myapp")
-    parser.add_argument("list", action="store_true", required=False,
+    parser.add_argument("list", action="store_true",
                         help="List all created apps in a table")
-    parser.add_argument("remove", metavar="APP", required=False,
+    parser.add_argument("remove", metavar="APP",
                         help="Remove an app completely (with warning)\n  Example: remove myapp")
-    parser.add_argument("domain", metavar="DOMAIN", required=False,
+    parser.add_argument("domain", metavar="DOMAIN",
                         help="(Used with create or map-domain) Specify real domain\n  Example: create --domain myapp.sanmisha.com")
-    parser.add_argument("map-domain", metavar="APP", required=False,
+    parser.add_argument("map-domain", metavar="APP",
                         help="Map real domain to existing app\n  Example: map-domain myapp --domain mydomain.com")
 
     args = parser.parse_args()
 
-    if len(vars(args)) == 0:
+    if not any(vars(args).values()):
         parser.print_help()
         exit(1)
 
