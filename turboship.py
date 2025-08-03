@@ -347,22 +347,31 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter
     )
 
-    parser.add_argument("create", action="store_true",
-                        help="Create a new app with optional real domain\n  Example: create --domain yourdomain.com")
-    parser.add_argument("test", metavar="APP",
-                        help="Run health checks for an app\n  Example: test myapp")
-    parser.add_argument("list", action="store_true",
-                        help="List all created apps in a table")
-    parser.add_argument("remove", metavar="APP",
-                        help="Remove an app completely (with warning)\n  Example: remove myapp")
-    parser.add_argument("domain", metavar="DOMAIN",
-                        help="(Used with create or map-domain) Specify real domain\n  Example: create --domain myapp.sanmisha.com")
-    parser.add_argument("map-domain", metavar="APP",
-                        help="Map real domain to existing app\n  Example: map-domain myapp --domain mydomain.com")
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # Create subcommand
+    create_parser = subparsers.add_parser("create", help="Create a new app")
+    create_parser.add_argument("--domain", metavar="DOMAIN", help="Specify real domain")
+
+    # Test subcommand
+    test_parser = subparsers.add_parser("test", help="Run health checks for an app")
+    test_parser.add_argument("app", metavar="APP", help="App name to test")
+
+    # List subcommand
+    subparsers.add_parser("list", help="List all created apps in a table")
+
+    # Remove subcommand
+    remove_parser = subparsers.add_parser("remove", help="Remove an app completely")
+    remove_parser.add_argument("app", metavar="APP", help="App name to remove")
+
+    # Map-domain subcommand
+    map_domain_parser = subparsers.add_parser("map-domain", help="Map real domain to existing app")
+    map_domain_parser.add_argument("app", metavar="APP", help="App name")
+    map_domain_parser.add_argument("--domain", metavar="DOMAIN", help="Specify real domain")
 
     args = parser.parse_args()
 
-    if not any(vars(args).values()):
+    if not args.command:
         parser.print_help()
         exit(1)
 
@@ -371,16 +380,16 @@ def main():
     print(colored(f"Turboship v{TURBOSHIP_VERSION} CLI", "blue"))
 
     # Command Handling
-    if args.create:
+    if args.command == "create":
         create_app()
-    elif args.test:
-        test_app(args.test)
-    elif args.list:
+    elif args.command == "test":
+        test_app(args.app)
+    elif args.command == "list":
         list_apps()
-    elif args.remove:
-        remove_app(args.remove)
-    elif args.map_domain and args.domain:
-        map_domain(args.map_domain, args.domain)
+    elif args.command == "remove":
+        remove_app(args.app)
+    elif args.command == "map-domain":
+        map_domain(args.app, args.domain)
     else:
         print(colored("⚠️  No valid command given.\n", "yellow"))
         parser.print_help()
