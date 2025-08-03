@@ -113,8 +113,25 @@ def create_app():
     os.system(f"chown -R www-data:www-data {logs_path}")
     os.system(f"chmod -R 755 {logs_path}")
 
-    # Correct ownership and permissions for pm2.config.js
+    # Ensure pm2.config.js is created before setting permissions
     pm2_config_path = os.path.join(app_root, "pm2.config.js")
+    pm2_config = f"""module.exports = {{
+        apps: [
+            {{
+            name: "{app_name}-backend",
+            script: "npm start",
+            cwd: "/var/www/{sftp_user}/api",
+            watch: false,
+            env: {{
+                NODE_ENV: "production"
+            }}
+            }}
+        ]
+        }};
+        """
+    if not os.path.exists(pm2_config_path):
+        with open(pm2_config_path, "w") as f:
+            f.write(pm2_config)
     os.system(f"chown {sftp_user}:{sftp_user} {pm2_config_path}")
     os.system(f"chmod 644 {pm2_config_path}")
 
@@ -190,6 +207,19 @@ def create_app():
 
     # Ensure all files created via SFTP or SSH have www-data ownership
     os.system(f"chown -R www-data:www-data {app_root}")
+
+    # Ensure proper ownership and permissions for the root directory
+    os.system(f"chown -R {sftp_user}:{sftp_user} {app_root}")
+    os.system(f"chmod -R 755 {app_root}")
+
+    # Add the SFTP user to the www-data group
+    os.system(f"usermod -aG www-data {sftp_user}")
+
+    # Set group ownership of the root directory to www-data
+    os.system(f"chgrp -R www-data {app_root}")
+
+    # Set group permissions for the root directory
+    os.system(f"chmod -R g+rwX {app_root}")
 
 def configure_nginx(project, domains):
     if isinstance(domains, str):
