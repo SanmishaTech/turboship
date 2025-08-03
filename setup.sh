@@ -12,7 +12,7 @@ sudo apt install -y nginx python3 python3-pip python3-venv git mariadb-server po
 
 # 2. Python Packages for CLI
 echo "🐍 Installing Python packages..."
-sudo pip3 install tabulate colorama
+sudo pip3 install --break-system-packages tabulate colorama
 
 # 3. Setup NGINX
 sudo systemctl enable nginx
