@@ -234,7 +234,7 @@ def configure_nginx(project, domains, enable_ssl=False):
         }}
 
         server {{
-            listen 443{'' if enable_ssl else ''};
+            {f'listen 443 ssl;' if enable_ssl else ''}
             server_name {server_names};
 
             {f'ssl_certificate /etc/letsencrypt/live/{domains[0]}/fullchain.pem; # managed by Certbot\n' if enable_ssl else ''}
