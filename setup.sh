@@ -47,21 +47,32 @@ echo "host    all             all             0.0.0.0/0               md5" | sud
 sudo sed -i "s/^#listen_addresses = 'localhost'/listen_addresses = '*'/'" /etc/postgresql/*/main/postgresql.conf
 sudo systemctl restart postgresql
 
-echo "🔧 Configuring SSH for SFTP and Password login..."
+echo "🔧 Configuring SSH for SFTP with chroot..."
 
-# SSH config: Enable password & interactive auth (but no chroot config!)
+# SSH config: Enable password & interactive auth
 sudo sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
 sudo sed -i 's/^#\?KbdInteractiveAuthentication.*/KbdInteractiveAuthentication yes/' /etc/ssh/sshd_config
 sudo sed -i 's/^#\?ChallengeResponseAuthentication.*/ChallengeResponseAuthentication no/' /etc/ssh/sshd_config
 sudo sed -i 's/^#\?UsePAM.*/UsePAM yes/' /etc/ssh/sshd_config
 
-# Allow SSH shell access (remove any existing chroot Match Group block if present)
-sudo sed -i '/Match Group sftpusers/,+4d' /etc/ssh/sshd_config
+# Configure chroot for SFTP users
+sudo sed -i '/Match Group sftpusers/,+4d' /etc/ssh/sshd_config  # Remove existing Match block if present
+sudo bash -c 'cat <<EOT >> /etc/ssh/sshd_config
+Match Group sftpusers
+    ChrootDirectory /var/www/%u
+    ForceCommand internal-sftp
+    AllowTcpForwarding no
+    X11Forwarding no
+EOT'
+
+# Ensure proper permissions for chroot directories
+sudo chown root:root /var/www
+sudo chmod 755 /var/www
 
 # Restart SSH to apply changes
 sudo systemctl restart ssh
 
-echo "✅ SSH configuration updated for SFTP users."
+echo "✅ SSH configuration updated with chroot for SFTP users."
 
 # 10. Done
 echo "✅ Turboship environment setup is complete. Ready to launch projects!"

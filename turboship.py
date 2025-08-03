@@ -20,8 +20,8 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''
-        CREATE TABLE IF NOT EXISTS projects (
-            project TEXT PRIMARY KEY,
+        CREATE TABLE IF NOT EXISTS apps (
+            app TEXT PRIMARY KEY,
             temp_domain TEXT,
             real_domain TEXT,
             db_type TEXT,
@@ -36,6 +36,7 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 def get_public_ip():
     try:
         ip = subprocess.check_output("curl -s ifconfig.me", shell=True).decode().strip()
@@ -48,7 +49,7 @@ def get_public_ip():
 def generate_password(length=12):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
-def validate_project_name(name):
+def validate_app_name(name):
     return re.match("^[a-zA-Z0-9_-]+$", name) is not None
 
 def prompt_database():
@@ -58,32 +59,30 @@ def prompt_database():
     choice = input("Enter choice [1/2]: ").strip()
     return "mariadb" if choice == "1" else "postgres"
 
-def create_project(custom_domain=None):
-    project = input("Enter project name: ").strip()
-    if not validate_project_name(project):
-        print(colored("Invalid project name. Use only letters, numbers, dashes, underscores.", "red"))
+def create_app():
+    app_name = input("Enter app name: ").strip()
+    if not validate_app_name(app_name):
+        print(colored("Invalid app name. Use only letters, numbers, dashes, underscores.", "red"))
         return
 
     db_type = prompt_database()
-    sftp_user = f"{project}_sftp"
-    db_user = f"{project}_dbu"
+    sftp_user = f"{app_name}_sftp"
+    db_user = f"{app_name}_dbu"
     db_pass = generate_password()
     sftp_pass = generate_password()
-    db_name = f"{project}_db"
-    temp_domain = f"{project}.{get_public_ip()}.sslip.io"
-    real_domain = custom_domain.strip() if custom_domain else ""
+    db_name = f"{app_name}_db"
+    temp_domain = f"{app_name}.{get_public_ip()}.sslip.io"
     now = datetime.now().isoformat()
 
-    project_root = f"/var/www/{sftp_user}"
-    project_path = os.path.join(project_root, "htdocs")
-    logs_path = os.path.join(project_root, "logs")
+    app_root = f"/var/www/{sftp_user}"
+    app_path = os.path.join(app_root, "htdocs")
+    logs_path = os.path.join(app_root, "logs")
+    api_path = os.path.join(app_root, "api")
 
     print(colored(figlet_format("Turboship"), "green"))
-    print(colored(f"Turboship v{TURBOSHIP_VERSION} - Project Summary:", "yellow"))
-    print(f"  🚀 Project Name : {colored(project, 'cyan')}")
+    print(colored(f"Turboship v{TURBOSHIP_VERSION} - App Summary:", "yellow"))
+    print(f"  🚀 App Name     : {colored(app_name, 'cyan')}")
     print(f"  🌐 Temp Domain  : {colored('https://' + temp_domain, 'green')}")
-    if real_domain:
-        print(f"  🏷️ Real Domain  : {colored('https://' + real_domain, 'green')}")
     print(f"  📦 SFTP User    : {sftp_user}")
     print(f"  🔑 SFTP Pass    : {sftp_pass}")
     print(f"  🛢️  DB Type      : {db_type}")
@@ -92,27 +91,47 @@ def create_project(custom_domain=None):
     print(f"  🔐 DB Password  : {db_pass}")
     print(f"  🕒 Created At   : {now}\n")
 
-    # Create user with SSH + SFTP (no chroot)
-    os.system(f"useradd -m -d {project_root} -s /bin/bash {sftp_user}")
+    # Create user with SSH + SFTP (middle-ground approach)
+    os.system(f"useradd -m -d {app_root} -s /bin/bash {sftp_user}")
     subprocess.run(["bash", "-c", f"echo '{sftp_user}:{sftp_pass}' | chpasswd"])
 
-    # Create required directories
-    os.makedirs(project_path, exist_ok=True)
+    # Create directories
+    os.makedirs(app_path, exist_ok=True)
     os.makedirs(logs_path, exist_ok=True)
+    os.makedirs(api_path, exist_ok=True)
 
-    # Set permissions
-    os.system(f"chown -R {sftp_user}:{sftp_user} {project_path}")
+    # Permissions
+    os.system(f"chown -R {sftp_user}:{sftp_user} {app_path}")
+    os.system(f"chown -R {sftp_user}:{sftp_user} {api_path}")
     os.system(f"chown -R www-data:www-data {logs_path}")
 
     # Landing page
     landing_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "landing_template.html")
     if os.path.exists(landing_path):
         with open(landing_path) as src:
-            content = src.read().replace("{project}", project).replace("{github}", GITHUB_URL)
-        with open(os.path.join(project_path, "index.html"), "w") as dst:
+            content = src.read().replace("{app_name}", app_name).replace("{github}", GITHUB_URL)
+        with open(os.path.join(app_path, "index.html"), "w") as dst:
             dst.write(content)
     else:
         print(colored("⚠️ landing_template.html not found — skipping landing page copy.", "yellow"))
+
+    # PM2 config
+    pm2_config = f"""module.exports = {{
+        apps: [
+            {{
+            name: "{app_name}-backend",
+            script: "npm start",
+            cwd: "/var/www/{sftp_user}/api",
+            watch: false,
+            env: {{
+                NODE_ENV: "production"
+            }}
+            }}
+        ]
+        }};
+        """
+    with open(os.path.join(app_root, "pm2.config.js"), "w") as f:
+        f.write(pm2_config)
 
     # Database setup
     if db_type == "mariadb":
@@ -131,28 +150,25 @@ def create_project(custom_domain=None):
         for cmd in commands:
             subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', cmd])
 
-    # Nginx + SSL
-    configure_nginx(project, [temp_domain])
+    # Nginx + SSL creation
+    configure_nginx(app_name, [temp_domain])
     install_ssl(temp_domain)
-
-    if real_domain:
-        configure_nginx(project, [temp_domain, real_domain])
-        install_ssl(real_domain)
 
     # Save to SQLite
     conn = sqlite3.connect(DB_PATH)
     conn.execute("""
-        INSERT INTO projects 
-        (project, temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, created_at)
+        INSERT INTO apps 
+        (app, temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (project, temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, now))
+    """, (app_name, temp_domain, None, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, now))
     conn.commit()
     conn.close()
 
 def configure_nginx(project, domains):
+    if isinstance(domains, str):
+        domains = [domains]
     server_names = " ".join(domains)
     root_path = f"/var/www/{project}_sftp/htdocs"
-    logs_path = f"/var/www/{project}_sftp/logs"
 
     conf = f"""
         server {{
@@ -162,32 +178,20 @@ def configure_nginx(project, domains):
             root {root_path};
             index index.html;
 
-            access_log {logs_path}/access.log;
-            error_log {logs_path}/error.log;
-
             location ^~ /.well-known/acme-challenge/ {{
                 allow all;
                 default_type "text/plain";
                 root {root_path};
             }}
 
-            location / {{
-                try_files $uri $uri/ =404;
+            location /api/ {{
+                proxy_pass http://localhost:3000/;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection 'upgrade';
+                proxy_set_header Host $host;
+                proxy_cache_bypass $http_upgrade;
             }}
-        }}
-
-        server {{
-            listen 443 ssl;
-            server_name {server_names};
-
-            root {root_path};
-            index index.html;
-
-            ssl_certificate /etc/letsencrypt/live/{domains[0]}/fullchain.pem;
-            ssl_certificate_key /etc/letsencrypt/live/{domains[0]}/privkey.pem;
-
-            access_log {logs_path}/access.log;
-            error_log {logs_path}/error.log;
 
             location / {{
                 try_files $uri $uri/ =404;
@@ -203,7 +207,6 @@ def configure_nginx(project, domains):
     if not os.path.exists(symlink):
         os.symlink(path, symlink)
 
-    # Create challenge folder
     os.makedirs(os.path.join(root_path, ".well-known/acme-challenge/"), exist_ok=True)
 
     os.system("nginx -t && systemctl reload nginx")
@@ -340,22 +343,22 @@ def map_domain(project, new_domain):
 def main():
     init_db()
     parser = argparse.ArgumentParser(
-        description=colored("Turboship v0.7 - Multi-Project Hosting Tool", "cyan"),
+        description=colored("Turboship v0.7 - Multi-App Hosting Tool", "cyan"),
         formatter_class=argparse.RawTextHelpFormatter
     )
 
-    parser.add_argument("--create", action="store_true",
-                        help="Create a new project with optional real domain\n  Example: --create --domain yourdomain.com")
-    parser.add_argument("--test", metavar="PROJECT",
-                        help="Run health checks for a project\n  Example: --test myproject")
-    parser.add_argument("--list", action="store_true",
-                        help="List all created projects in a table")
-    parser.add_argument("--remove", metavar="PROJECT",
-                        help="Remove a project completely (with warning)\n  Example: --remove myproject")
-    parser.add_argument("--domain", metavar="DOMAIN",
-                        help="(Used with --create or --map-domain) Specify real domain\n  Example: --create --domain myapp.sanmisha.com")
-    parser.add_argument("--map-domain", metavar="PROJECT",
-                        help="Map real domain to existing project\n  Example: --map-domain myproject --domain mydomain.com")
+    parser.add_argument("create", action="store_true",
+                        help="Create a new app with optional real domain\n  Example: create --domain yourdomain.com")
+    parser.add_argument("test", metavar="APP",
+                        help="Run health checks for an app\n  Example: test myapp")
+    parser.add_argument("list", action="store_true",
+                        help="List all created apps in a table")
+    parser.add_argument("remove", metavar="APP",
+                        help="Remove an app completely (with warning)\n  Example: remove myapp")
+    parser.add_argument("domain", metavar="DOMAIN",
+                        help="(Used with create or map-domain) Specify real domain\n  Example: create --domain myapp.sanmisha.com")
+    parser.add_argument("map-domain", metavar="APP",
+                        help="Map real domain to existing app\n  Example: map-domain myapp --domain mydomain.com")
 
     args = parser.parse_args()
 
@@ -365,13 +368,13 @@ def main():
 
     # Command Handling
     if args.create:
-        create_project(custom_domain=args.domain)
+        create_app()
     elif args.test:
-        test_project(args.test)
+        test_app(args.test)
     elif args.list:
-        list_projects()
+        list_apps()
     elif args.remove:
-        remove_project(args.remove)
+        remove_app(args.remove)
     elif args.map_domain and args.domain:
         map_domain(args.map_domain, args.domain)
     else:
