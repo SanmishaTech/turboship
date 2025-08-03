@@ -332,7 +332,7 @@ def remove_app(app):
 
     # Remove SSL certificates
     for domain in domains:
-        subprocess.run(["certbot", "delete", "--cert-name", domain], input=b'y\n')
+        subprocess.run(["certbot", "delete", "--cert-name", domain, "--non-interactive"], input=b'y\n')
 
     # Remove DB record
     c.execute("DELETE FROM apps WHERE app = ?", (app,))
