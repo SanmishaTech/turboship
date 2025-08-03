@@ -109,16 +109,14 @@ def create_app():
     os.system(f"chown -R www-data:www-data {app_path}")
     os.system(f"chmod -R 755 {app_path}")
 
+    # Correct ownership and permissions for logs directory
+    os.system(f"chown -R www-data:www-data {logs_path}")
+    os.system(f"chmod -R 755 {logs_path}")
+
     # Correct ownership and permissions for pm2.config.js
     pm2_config_path = os.path.join(app_root, "pm2.config.js")
     os.system(f"chown {sftp_user}:{sftp_user} {pm2_config_path}")
     os.system(f"chmod 644 {pm2_config_path}")
-
-    # Permissions for abc_sftp user
-    os.system(f"chown -R {sftp_user}:{sftp_user} {logs_path}")
-    os.system(f"chmod -R 755 {logs_path}")
-    os.system(f"chown -R {sftp_user}:{sftp_user} {api_path}")
-    os.system(f"chmod -R 755 {api_path}")
 
     # Ensure .well-known directory exists for SSL challenges
     os.makedirs(os.path.join(app_path, ".well-known/acme-challenge"), exist_ok=True)
