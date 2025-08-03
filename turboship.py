@@ -250,7 +250,7 @@ def install_ssl(domains):
 def test_project(project):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT temp_domain, real_domain, db_type, db_name, db_user, db_pass FROM projects WHERE project = ?", (project,))
+    c.execute("SELECT temp_domain, real_domain, db_type, db_name, db_user, db_pass FROM apps WHERE project = ?", (project,))
     row = c.fetchone()
     if not row:
         print(colored("❌ Project not found.", "red"))
@@ -293,10 +293,10 @@ def remove_app(app):
 
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT temp_domain, real_domain, db_type, db_name, db_user, sftp_user FROM projects WHERE project = ?", (project,))
+    c.execute("SELECT temp_domain, real_domain, db_type, db_name, db_user, sftp_user FROM apps WHERE app = ?", (app,))
     row = c.fetchone()
     if not row:
-        print(colored(f"❌ Project '{project}' not found.", "red"))
+        print(colored(f"❌ App '{app}' not found.", "red"))
         return
 
     temp_domain, real_domain, db_type, db_name, db_user, sftp_user = row
@@ -335,19 +335,19 @@ def remove_app(app):
         subprocess.run(["certbot", "delete", "--cert-name", domain], input=b'y\n')
 
     # Remove DB record
-    c.execute("DELETE FROM projects WHERE project = ?", (project,))
+    c.execute("DELETE FROM apps WHERE app = ?", (app,))
     conn.commit()
     conn.close()
 
-    print(colored(f"✅ Project '{project}' deleted successfully.", "green"))
+    print(colored(f"✅ App '{app}' deleted successfully.", "green"))
 
-def map_domain(project, new_domain):
+def map_domain(app, new_domain):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT temp_domain FROM projects WHERE project = ?", (project,))
+    c.execute("SELECT temp_domain FROM apps WHERE app = ?", (app,))
     row = c.fetchone()
     if not row:
-        print(colored(f"❌ Project '{project}' not found in DB.", "red"))
+        print(colored(f"❌ App '{app}' not found in DB.", "red"))
         return
 
     temp_domain = row[0]
