@@ -182,6 +182,15 @@ def create_app():
     conn.commit()
     conn.close()
 
+    # Ensure proper ownership and permissions for index.html
+    index_path = os.path.join(app_path, "index.html")
+    if os.path.exists(index_path):
+        os.system(f"chown www-data:www-data {index_path}")
+        os.system(f"chmod 644 {index_path}")
+
+    # Ensure all files created via SFTP or SSH have www-data ownership
+    os.system(f"chown -R www-data:www-data {app_root}")
+
 def configure_nginx(project, domains):
     if isinstance(domains, str):
         domains = [domains]
