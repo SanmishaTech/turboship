@@ -286,10 +286,40 @@ def install_ssl(domains):
     if isinstance(domains, str):
         domains = [domains]
     domain_flags = " ".join(f"-d {d}" for d in domains)
-    os.system(
+
+    # Attempt to generate SSL certificates
+    certbot_command = (
         f"certbot --nginx --non-interactive --agree-tos {domain_flags} "
-        f"-m admin@{domains[0]} --redirect --expand || true"
+        f"-m admin@{domains[0]} --redirect --expand"
     )
+
+    result = os.system(certbot_command)
+
+    if result != 0:
+        print(colored("❌ Certbot failed to generate SSL certificates. Retrying...", "red"))
+
+        # Temporarily disable SSL in NGINX
+        for domain in domains:
+            nginx_path = f"/etc/nginx/sites-available/{domain}"
+            if os.path.exists(nginx_path):
+                with open(nginx_path, "r") as f:
+                    conf = f.read()
+                conf = conf.replace("listen 443 ssl;", "# listen 443 ssl;")
+                conf = conf.replace("ssl_certificate", "# ssl_certificate")
+                conf = conf.replace("ssl_certificate_key", "# ssl_certificate_key")
+                with open(nginx_path, "w") as f:
+                    f.write(conf)
+
+        os.system("nginx -t && systemctl reload nginx")
+
+        # Retry Certbot
+        result = os.system(certbot_command)
+
+        if result != 0:
+            print(colored("❌ Certbot failed again. Please check domain accessibility and logs.", "red"))
+            return
+
+    print(colored("✅ SSL certificates generated successfully.", "green"))
 
 def test_project(project):
     conn = sqlite3.connect(DB_PATH)
@@ -446,6 +476,10 @@ def main():
     map_domain_parser.add_argument("app", metavar="APP", help="App name")
     map_domain_parser.add_argument("--domain", metavar="DOMAIN", help="Specify real domain")
 
+    # Install-SSL subcommand
+    install_ssl_parser = subparsers.add_parser("install-ssl", help="Install SSL certificates for an app's domains")
+    install_ssl_parser.add_argument("app", metavar="APP", help="App name to install SSL for")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -467,6 +501,23 @@ def main():
         remove_app(args.app)
     elif args.command == "map-domain":
         map_domain(args.app, args.domain)
+    elif args.command == "install-ssl":
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT temp_domain, real_domain FROM apps WHERE app = ?", (args.app,))
+        row = c.fetchone()
+        conn.close()
+
+        if not row:
+            print(colored(f"❌ App '{args.app}' not found.", "red"))
+            exit(1)
+
+        temp_domain, real_domain = row
+        domains = [temp_domain]
+        if real_domain:
+            domains.append(real_domain)
+
+        install_ssl(domains)
     else:
         print(colored("⚠️  No valid command given.\n", "yellow"))
         parser.print_help()
