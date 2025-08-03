@@ -230,6 +230,12 @@ def configure_nginx(project, domains):
         server {{
             listen 80;
             server_name {server_names};
+            return 301 https://$host$request_uri;
+        }}
+
+        server {{
+            listen 80;
+            server_name {server_names};
 
             root {root_path};
             index index.html;
@@ -252,6 +258,10 @@ def configure_nginx(project, domains):
             location / {{
                 try_files $uri $uri/ =404;
             }}
+
+            add_header X-Frame-Options "SAMEORIGIN";
+            add_header X-Content-Type-Options "nosniff";
+            add_header X-XSS-Protection "1; mode=block";
         }}
         """
 
