@@ -299,6 +299,8 @@ def configure_nginx(project, domains, enable_ssl=False):
         result = os.system("nginx -t && systemctl reload nginx")
         if result != 0:
             print(colored("❌ NGINX reload failed. Check configuration syntax.", "red"))
+            os.system("nginx -t")  # Check NGINX configuration
+            exit(1)  # Stop execution
         else:
             print(colored("✅ NGINX reloaded successfully.", "green"))
     except Exception as e:
@@ -369,6 +371,11 @@ def install_ssl(domains):
         os.system("nginx -t && systemctl reload nginx")
     else:
         print(colored("✅ SSL certificates generated successfully.", "green"))
+
+    # Update NGINX configuration with SSL enabled
+    for domain in domains:
+        configure_nginx(domain, [domain], enable_ssl=True)
+        os.system("nginx -t && systemctl reload nginx")
 
 def test_project(project):
     conn = sqlite3.connect(DB_PATH)
@@ -528,6 +535,7 @@ def main():
     # Install-SSL subcommand
     install_ssl_parser = subparsers.add_parser("install-ssl", help="Install SSL certificates for an app's domains")
     install_ssl_parser.add_argument("app", metavar="APP", help="App name to install SSL for")
+    install_ssl_parser.add_argument("--domain", metavar="DOMAIN", help="Comma-separated list of domains")
 
     args = parser.parse_args()
 
@@ -551,21 +559,7 @@ def main():
     elif args.command == "map-domain":
         map_domain(args.app, args.domain)
     elif args.command == "install-ssl":
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("SELECT temp_domain, real_domain FROM apps WHERE app = ?", (args.app,))
-        row = c.fetchone()
-        conn.close()
-
-        if not row:
-            print(colored(f"❌ App '{args.app}' not found.", "red"))
-            exit(1)
-
-        temp_domain, real_domain = row
-        domains = [temp_domain]
-        if real_domain:
-            domains.append(real_domain)
-
+        domains = args.domain.split(",")
         install_ssl(domains)
     else:
         print(colored("⚠️  No valid command given.\n", "yellow"))
