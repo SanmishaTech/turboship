@@ -334,6 +334,8 @@ def remove_app(app):
     if real_domain:
         domains.append(real_domain)
 
+    app_root = f"/var/www/{app}_sftp"
+
     # Backup DB (optional future improvement)
 
     # Remove database user and database
@@ -388,18 +390,18 @@ def map_domain(app, new_domain):
     domains = [temp_domain, new_domain]
 
     # Update nginx and certbot
-    configure_nginx(project, domains)
+    configure_nginx(app, domains)
 
     # Install SSL for each domain individually
     for domain in domains:
         install_ssl(domain)
 
     # Update DB
-    c.execute("UPDATE projects SET real_domain = ? WHERE project = ?", (new_domain, project))
+    c.execute("UPDATE apps SET real_domain = ? WHERE app = ?", (new_domain, app))
     conn.commit()
     conn.close()
 
-    print(colored(f"✅ Domain for '{project}' updated to '{new_domain}'", "green"))
+    print(colored(f"✅ Domain for '{app}' updated to '{new_domain}'", "green"))
 
 def main():
     init_db()

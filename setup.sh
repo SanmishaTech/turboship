@@ -23,6 +23,7 @@ sudo ufw allow OpenSSH
 sudo ufw allow 'Nginx Full'
 sudo ufw allow 3306/tcp  # MySQL Remote Access
 sudo ufw allow 5432/tcp  # PostgreSQL Remote Access
+sudo ufw allow 3000/tcp  # API Access
 sudo ufw --force enable
 
 # 5. Setup Directories
