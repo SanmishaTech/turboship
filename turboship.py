@@ -276,7 +276,7 @@ def test_project(project):
 
     print(colored("✅ DB Connection OK" if result == 0 else "❌ DB Connection Failed", "green" if result == 0 else "red"))
 
-def list_projects():
+def list_apps():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT project, temp_domain, real_domain, db_type, db_name, db_user, sftp_user, created_at FROM projects")
@@ -285,8 +285,8 @@ def list_projects():
     print(tabulate(rows, headers=headers, tablefmt="fancy_grid"))
     conn.close()
 
-def remove_project(project):
-    confirm = input(colored(f"⚠️ Are you sure you want to delete '{project}' and all its resources? (yes/no): ", "red"))
+def remove_app(app):
+    confirm = input(colored(f"⚠️ Are you sure you want to delete '{app}' and all its resources? (yes/no): ", "red"))
     if confirm.lower() != "yes":
         print("❌ Aborted.")
         return
