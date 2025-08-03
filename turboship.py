@@ -299,11 +299,13 @@ def install_ssl(domains):
         print(colored("❌ Certbot failed to generate SSL certificates. Retrying...", "red"))
 
         # Temporarily disable SSL in NGINX
+        original_configs = {}
         for domain in domains:
             nginx_path = f"/etc/nginx/sites-available/{domain}"
             if os.path.exists(nginx_path):
                 with open(nginx_path, "r") as f:
-                    conf = f.read()
+                    original_configs[domain] = f.read()
+                conf = original_configs[domain]
                 conf = conf.replace("listen 443 ssl;", "# listen 443 ssl;")
                 conf = conf.replace("ssl_certificate", "# ssl_certificate")
                 conf = conf.replace("ssl_certificate_key", "# ssl_certificate_key")
@@ -317,9 +319,27 @@ def install_ssl(domains):
 
         if result != 0:
             print(colored("❌ Certbot failed again. Please check domain accessibility and logs.", "red"))
+
+            # Restore original NGINX configurations
+            for domain, original_conf in original_configs.items():
+                nginx_path = f"/etc/nginx/sites-available/{domain}"
+                with open(nginx_path, "w") as f:
+                    f.write(original_conf)
+
+            os.system("nginx -t && systemctl reload nginx")
             return
 
-    print(colored("✅ SSL certificates generated successfully.", "green"))
+        print(colored("✅ SSL certificates generated successfully.", "green"))
+
+        # Restore original NGINX configurations
+        for domain, original_conf in original_configs.items():
+            nginx_path = f"/etc/nginx/sites-available/{domain}"
+            with open(nginx_path, "w") as f:
+                f.write(original_conf)
+
+        os.system("nginx -t && systemctl reload nginx")
+    else:
+        print(colored("✅ SSL certificates generated successfully.", "green"))
 
 def test_project(project):
     conn = sqlite3.connect(DB_PATH)
