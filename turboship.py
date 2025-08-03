@@ -321,8 +321,8 @@ def remove_app(app):
     subprocess.run(["userdel", "-r", sftp_user], stderr=subprocess.DEVNULL)
 
     # Remove Nginx config
-    nginx_path = f"/etc/nginx/sites-available/{project}"
-    nginx_symlink = f"/etc/nginx/sites-enabled/{project}"
+    nginx_path = f"/etc/nginx/sites-available/{app}"
+    nginx_symlink = f"/etc/nginx/sites-enabled/{app}"
     if os.path.exists(nginx_symlink):
         os.remove(nginx_symlink)
     if os.path.exists(nginx_path):
