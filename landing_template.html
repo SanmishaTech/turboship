@@ -2,100 +2,24 @@
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Welcome to {project}</title>
-  <style>
-    body {
-      font-family: "Segoe UI", sans-serif;
-      background: #f4f8fb;
-      color: #333;
-      text-align: center;
-      padding: 60px 20px;
-    }
-
-    h1 {
-      font-size: 3.5rem;
-      margin-bottom: 20px;
-      color: #2c3e50;
-      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
-    }
-
-    p {
-      font-size: 1.3rem;
-      margin-top: 10px;
-      color: #555;
-    }
-
-    .badge {
-      display: inline-block;
-      background: #3498db;
-      color: #fff;
-      padding: 10px 16px;
-      border-radius: 8px;
-      margin-top: 20px;
-      font-size: 1.1rem;
-      font-weight: 600;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    .footer {
-      margin-top: 60px;
-      font-size: 0.9rem;
-      color: #888;
-    }
-
-    .footer a {
-      color: #3498db;
-      text-decoration: none;
-    }
-
-    .github-link {
-      display: inline-block;
-      margin-top: 30px;
-      color: #333;
-      font-weight: bold;
-      font-size: 1.1rem;
-      text-decoration: none;
-      padding: 10px 20px;
-      border: 2px solid #3498db;
-      border-radius: 6px;
-      transition: background 0.3s, color 0.3s;
-    }
-
-    .github-link:hover {
-      background: #3498db;
-      color: #fff;
-      text-decoration: none;
-    }
-
-    .emoji {
-      font-size: 3rem;
-      margin-bottom: 20px;
-    }
-
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-      background: #fff;
-      padding: 40px;
-      border-radius: 10px;
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    }
-  </style>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-  <div class="container">
-    <div class="emoji">🚀</div>
-    <h1>Welcome to <strong>{app_name}</strong></h1>
-    <p>Your project has been successfully deployed using <strong>Turboship</strong>.</p>
-    <p class="badge">HTTPS Secured &nbsp;|&nbsp; SFTP Enabled &nbsp;|&nbsp; Database Ready</p>
+<body class="bg-gray-100 text-gray-800">
+  <div class="max-w-4xl mx-auto bg-white p-8 rounded-lg shadow-lg mt-10 sm:mt-20">
+    <div class="text-6xl mb-4 text-blue-500">🚀</div>
+    <h1 class="text-4xl sm:text-5xl font-extrabold text-gray-900 mb-4">Welcome to <strong>{app_name}</strong></h1>
+    <p class="text-lg sm:text-xl text-gray-600 mb-6">Your project has been successfully deployed using <strong>Turboship</strong>.</p>
+    <p class="inline-block bg-blue-500 text-white py-2 px-4 rounded-lg shadow-md text-lg font-semibold">HTTPS Secured &nbsp;|&nbsp; SFTP Enabled &nbsp;|&nbsp; Database Ready</p>
 
     <br>
-    <a class="github-link" href="https://github.com/SanmishaTech/turboship" target="_blank">
+    <a class="inline-block mt-6 text-blue-500 font-bold text-lg border-2 border-blue-500 py-2 px-4 rounded-lg hover:bg-blue-500 hover:text-white transition" href="https://github.com/SanmishaTech/turboship" target="_blank">
       📂 View Project on GitHub
     </a>
 
-    <div class="footer">
-      Developed by <a href="https://sanmisha.com" target="_blank">Sanmisha Technologies</a>
+    <div class="mt-10 text-sm text-gray-500">
+      Developed by <a class="text-blue-500 hover:underline" href="https://sanmisha.com" target="_blank">Sanmisha Technologies</a>
     </div>
   </div>
 </body>

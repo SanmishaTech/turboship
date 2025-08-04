@@ -486,7 +486,7 @@ def info_app(app):
 def main():
     init_db()
     parser = argparse.ArgumentParser(
-        description=colored(f"Turboship v{TURBOSHIP_VERSION} - Multi-App Hosting Tool", "cyan"),
+        description=colored(f"Turboship v{TURBOSHIP_VERSION} - Multi-App Hosting Tool\n\nCommands:\n\ncreate: Create a new app\ntest: Run health checks for an app\nlist: List all created apps\nremove: Remove an app completely\nmap-domain: Map real domain to existing app\ninfo: Display detailed information about an app", "cyan"),
         formatter_class=argparse.RawTextHelpFormatter
     )
 
@@ -539,6 +539,41 @@ def main():
         map_domain(args.app, args.domain)
     elif args.command == "info":
         info_app(args.app)
+    elif args.command == "interactive":
+        while True:
+            print("\nAvailable Commands:")
+            print("1. Create App")
+            print("2. Test App")
+            print("3. List Apps")
+            print("4. Remove App")
+            print("5. Map Domain")
+            print("6. Info App")
+            print("7. Exit")
+
+            choice = input("Enter your choice: ").strip()
+
+            if choice == "1":
+                create_app()
+            elif choice == "2":
+                app_name = input("Enter app name: ").strip()
+                test_app(app_name)
+            elif choice == "3":
+                list_apps()
+            elif choice == "4":
+                app_name = input("Enter app name: ").strip()
+                remove_app(app_name)
+            elif choice == "5":
+                app_name = input("Enter app name: ").strip()
+                domain = input("Enter domain: ").strip()
+                map_domain(app_name, domain)
+            elif choice == "6":
+                app_name = input("Enter app name: ").strip()
+                info_app(app_name)
+            elif choice == "7":
+                print("Exiting interactive mode.")
+                break
+            else:
+                print("Invalid choice. Please try again.")
     else:
         print(colored("⚠️  No valid command given.\n", "yellow"))
         parser.print_help()
