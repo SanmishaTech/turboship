@@ -236,7 +236,7 @@ def configure_nginx(project, domains, enable_ssl=False):
         }}
 
         server {{
-            listen 443 ssl;
+            # listen 443 ssl;
             server_name {server_names};
 
             # SSL-related lines are excluded to avoid conflicts with Certbot
