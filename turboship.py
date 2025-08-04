@@ -188,7 +188,7 @@ def create_app():
 
     # Nginx + SSL creation
     configure_nginx(app_name, [temp_domain])
-    install_ssl(app_name, temp_domain)
+    install_ssl(app_name)
 
     # Ensure proper ownership and permissions for index.html
     index_path = os.path.join(app_path, "index.html")
@@ -298,15 +298,26 @@ def configure_nginx(app, domains):
         return
 
 
-def install_ssl(app, domains):
-    if isinstance(domains, str):
-        domains = [domains]
+def install_ssl(app):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT temp_domain, real_domain FROM apps WHERE app = ?", (app,))
+    row = c.fetchone()
+    if not row:
+        print(colored(f"❌ App '{app}' not found in DB.", "red"))
+        return
+
+    temp_domain, real_domain = row
+    domains = [temp_domain]
+    if real_domain:
+        domains.append(real_domain)
+
     domain_flags = " ".join(f"-d {d}" for d in domains)
 
     # Attempt to generate SSL certificates
     certbot_command = (
         f"certbot --nginx --non-interactive --agree-tos {domain_flags} "
-        f"-m admin@{domains[0]} --redirect --expand"
+        f"-m admin@{temp_domain} --redirect --expand"
     )
     result = os.system(certbot_command)
 
@@ -316,6 +327,8 @@ def install_ssl(app, domains):
 
     # Reload NGINX after Certbot updates the configuration
     os.system("nginx -t && systemctl reload nginx")
+
+    conn.close()
 
 def test_project(project):
     conn = sqlite3.connect(DB_PATH)
@@ -432,9 +445,8 @@ def map_domain(app, new_domain):
     # Update nginx and certbot
     configure_nginx(app, domains)
 
-    # Install SSL for each domain individually
-    for domain in domains:
-        install_ssl(domain)
+    # Install SSL for the app
+    install_ssl(app)
 
     # Update DB
     c.execute("UPDATE apps SET real_domain = ? WHERE app = ?", (new_domain, app))
@@ -473,9 +485,8 @@ def main():
     map_domain_parser.add_argument("--domain", metavar="DOMAIN", help="Specify real domain")
 
     # Install-SSL subcommand
-    install_ssl_parser = subparsers.add_parser("install-ssl", help="Install SSL certificates for an app's domains")
+    install_ssl_parser = subparsers.add_parser("install-ssl", help="Install SSL certificates for an app")
     install_ssl_parser.add_argument("app", metavar="APP", help="App name to install SSL for")
-    install_ssl_parser.add_argument("--domain", metavar="DOMAIN", help="Comma-separated list of domains")
 
     args = parser.parse_args()
 
@@ -499,8 +510,7 @@ def main():
     elif args.command == "map-domain":
         map_domain(args.app, args.domain)
     elif args.command == "install-ssl":
-        domains = args.domain.split(",")
-        install_ssl(domains)
+        install_ssl(args.app)
     else:
         print(colored("⚠️  No valid command given.\n", "yellow"))
         parser.print_help()
