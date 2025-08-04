@@ -440,7 +440,9 @@ def map_domain(app, new_domain):
         return
 
     temp_domain = row[0]
-    domains = [temp_domain, new_domain]
+    domains = [temp_domain]
+    if new_domain:
+        domains.append(new_domain)
 
     # Update nginx and certbot
     configure_nginx(app, domains)
