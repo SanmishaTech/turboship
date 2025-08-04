@@ -188,7 +188,7 @@ def create_app():
 
     # Nginx + SSL creation
     configure_nginx(app_name, [temp_domain])
-    install_ssl(temp_domain)
+    install_ssl(app_name, temp_domain)
 
     # Ensure proper ownership and permissions for index.html
     index_path = os.path.join(app_path, "index.html")
@@ -230,7 +230,7 @@ def configure_nginx(app, domains):
         domains = [domains]
 
     server_names = " ".join(domains)
-    root_path = f"/var/www/{app}_sftp/htdocs"
+    root_path = f"/var/www/{app}_sftp/htdocs"  # Use app name instead of domain
 
     # Generate NGINX configuration
     conf = f"""
@@ -266,6 +266,7 @@ def configure_nginx(app, domains):
         }}
         """
 
+    # Use app name for NGINX configuration file
     path = f"/etc/nginx/sites-available/{app}"
     try:
         with open(path, "w") as f:
@@ -297,7 +298,7 @@ def configure_nginx(app, domains):
         return
 
 
-def install_ssl(domains):
+def install_ssl(app, domains):
     if isinstance(domains, str):
         domains = [domains]
     domain_flags = " ".join(f"-d {d}" for d in domains)
@@ -313,10 +314,8 @@ def install_ssl(domains):
         os.system("nginx -t")  # Show detailed errors
         return
 
-    # Update NGINX configuration with SSL enabled
-    for domain in domains:
-        configure_nginx(domain, [domain])
-        os.system("nginx -t && systemctl reload nginx")
+    # Reload NGINX after Certbot updates the configuration
+    os.system("nginx -t && systemctl reload nginx")
 
 def test_project(project):
     conn = sqlite3.connect(DB_PATH)
