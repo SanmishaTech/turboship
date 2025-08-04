@@ -510,10 +510,6 @@ def main():
     map_domain_parser.add_argument("app", metavar="APP", help="App name")
     map_domain_parser.add_argument("--domain", metavar="DOMAIN", help="Specify real domain")
 
-    # Install-SSL subcommand
-    install_ssl_parser = subparsers.add_parser("install-ssl", help="Install SSL certificates for an app")
-    install_ssl_parser.add_argument("app", metavar="APP", help="App name to install SSL for")
-
     # Info subcommand
     info_parser = subparsers.add_parser("info", help="Display detailed information about an app")
     info_parser.add_argument("app", metavar="APP", help="App name to display information for")
@@ -539,8 +535,6 @@ def main():
         remove_app(args.app)
     elif args.command == "map-domain":
         map_domain(args.app, args.domain)
-    elif args.command == "install-ssl":
-        install_ssl(args.app)
     elif args.command == "info":
         info_app(args.app)
     else:
