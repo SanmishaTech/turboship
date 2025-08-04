@@ -455,6 +455,32 @@ def map_domain(app, new_domain):
 
     print(colored(f"✅ Domain for '{app}' updated to '{new_domain}'", "green"))
 
+def info_app(app):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT * FROM apps WHERE app = ?", (app,))
+    row = c.fetchone()
+    if not row:
+        print(colored(f"❌ App '{app}' not found.", "red"))
+        return
+
+    app_name, temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, created_at = row
+
+    print(colored(figlet_format("Turboship"), "green"))
+    print(colored(f"Turboship v{TURBOSHIP_VERSION} - App Information:", "yellow"))
+    print(f"  🚀 App Name     : {colored(app_name, 'cyan')}")
+    print(f"  🌐 Temp Domain  : {colored('https://' + temp_domain, 'green')}")
+    print(f"  🌐 Real Domain  : {colored('https://' + real_domain if real_domain else 'None', 'green')}")
+    print(f"  📦 SFTP User    : {sftp_user}")
+    print(f"  🔑 SFTP Pass    : {sftp_pass}")
+    print(f"  🛢️  DB Type      : {db_type}")
+    print(f"  🗄️  DB Name      : {db_name}")
+    print(f"  👤 DB User      : {db_user}")
+    print(f"  🔐 DB Password  : {db_pass}")
+    print(f"  🕒 Created At   : {created_at}\n")
+
+    conn.close()
+
 def main():
     init_db()
     parser = argparse.ArgumentParser(
@@ -488,6 +514,10 @@ def main():
     install_ssl_parser = subparsers.add_parser("install-ssl", help="Install SSL certificates for an app")
     install_ssl_parser.add_argument("app", metavar="APP", help="App name to install SSL for")
 
+    # Info subcommand
+    info_parser = subparsers.add_parser("info", help="Display detailed information about an app")
+    info_parser.add_argument("app", metavar="APP", help="App name to display information for")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -511,6 +541,8 @@ def main():
         map_domain(args.app, args.domain)
     elif args.command == "install-ssl":
         install_ssl(args.app)
+    elif args.command == "info":
+        info_app(args.app)
     else:
         print(colored("⚠️  No valid command given.\n", "yellow"))
         parser.print_help()
