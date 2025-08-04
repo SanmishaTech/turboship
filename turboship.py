@@ -73,6 +73,19 @@ def create_app():
     temp_domain = f"{app_name}.{get_public_ip()}.sslip.io"
     now = datetime.now().isoformat()
 
+    # Save to SQLite first
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        """
+        INSERT INTO apps 
+        (app, temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (app_name, temp_domain, None, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, now)
+    )
+    conn.commit()
+    conn.close()
+
     app_root = f"/var/www/{app_name}_sftp"
     app_path = os.path.join(app_root, "htdocs")
     logs_path = os.path.join(app_root, "logs")
@@ -176,16 +189,6 @@ def create_app():
     configure_nginx(app_name, [temp_domain])
     install_ssl(temp_domain)
 
-    # Save to SQLite
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
-        INSERT INTO apps 
-        (app, temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (app_name, temp_domain, None, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, now))
-    conn.commit()
-    conn.close()
-
     # Ensure proper ownership and permissions for index.html
     index_path = os.path.join(app_path, "index.html")
     if os.path.exists(index_path):
@@ -234,16 +237,6 @@ def configure_nginx(app, domains):
             listen 80;
             server_name {server_names};
             return 301 https://$host$request_uri;
-        }}
-
-        server {{
-            listen 443 ssl;
-            server_name {server_names};
-
-            ssl_certificate /etc/letsencrypt/live/{domains[0]}/fullchain.pem; # managed by Certbot
-            ssl_certificate_key /etc/letsencrypt/live/{domains[0]}/privkey.pem; # managed by Certbot
-            include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
-            ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
 
             root {root_path};
             index index.html;
