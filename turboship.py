@@ -187,7 +187,7 @@ def create_app():
 
     # Nginx + SSL creation
     configure_nginx(app_name, [temp_domain])
-    # install_ssl(temp_domain)
+    install_ssl([temp_domain])
 
     # Ensure proper ownership and permissions for index.html
     index_path = os.path.join(app_path, "index.html")
@@ -236,7 +236,6 @@ def configure_nginx(app, domains):
         server {{
             listen 80;
             server_name {server_names};
-            return 301 https://$host$request_uri;
 
             root {root_path};
             index index.html;
@@ -270,9 +269,7 @@ def configure_nginx(app, domains):
     try:
         with open(path, "w") as f:
             f.write(conf)
-        print(colored(f"✅ NGINX configuration written to {path}", "green"))
     except Exception as e:
-        print(colored(f"❌ Failed to write NGINX configuration: {e}", "red"))
         return
 
     # Create symlink in sites-enabled
@@ -280,53 +277,40 @@ def configure_nginx(app, domains):
     try:
         if not os.path.exists(symlink):
             os.symlink(path, symlink)
-        print(colored(f"✅ Symlink created for {symlink}", "green"))
     except Exception as e:
-        print(colored(f"❌ Failed to create symlink: {e}", "red"))
         return
 
     # Create .well-known directory for SSL challenges
     try:
         os.makedirs(os.path.join(root_path, ".well-known/acme-challenge/"), exist_ok=True)
-        print(colored("✅ .well-known/acme-challenge directory created", "green"))
     except Exception as e:
-        print(colored(f"❌ Failed to create .well-known/acme-challenge directory: {e}", "red"))
         return
 
     # Test and reload NGINX
     try:
         result = os.system("nginx -t && systemctl reload nginx")
         if result != 0:
-            print(colored("❌ NGINX reload failed. Check configuration syntax.", "red"))
             os.system("nginx -t")  # Show detailed errors
             exit(1)
-        else:
-            print(colored("✅ NGINX reloaded successfully.", "green"))
     except Exception as e:
-        print(colored(f"❌ Failed to reload NGINX: {e}", "red"))
+        return
+
 
 def install_ssl(domains):
     if isinstance(domains, str):
         domains = [domains]
     domain_flags = " ".join(f"-d {d}" for d in domains)
 
-    print(colored(f"🔧 Starting SSL installation for domains: {', '.join(domains)}", "cyan"))
-
     # Attempt to generate SSL certificates
     certbot_command = (
         f"certbot --nginx --non-interactive --agree-tos {domain_flags} "
         f"-m admin@{domains[0]} --redirect --expand"
     )
-
-    print(colored(f"🔧 Running Certbot command: {certbot_command}", "cyan"))
     result = os.system(certbot_command)
 
     if result != 0:
-        print(colored("❌ Certbot failed to generate SSL certificates. Check logs and domain accessibility.", "red"))
         os.system("nginx -t")  # Show detailed errors
         return
-
-    print(colored("✅ SSL certificates generated successfully.", "green"))
 
     # Update NGINX configuration with SSL enabled
     for domain in domains:
