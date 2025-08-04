@@ -233,13 +233,7 @@ def configure_nginx(project, domains, enable_ssl=False):
             listen 80;
             server_name {server_names};
             return 301 https://$host$request_uri;
-        }}
 
-        server {{
-            # listen 443 ssl;
-            server_name {server_names};
-
-            # SSL-related lines are excluded to avoid conflicts with Certbot
             root {root_path};
             index index.html;
 
