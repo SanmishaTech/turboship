@@ -86,6 +86,7 @@ def create_app():
     conn.commit()
     conn.close()
 
+    # Update app_root to exclude temp_domain
     app_root = f"/var/www/{app_name}_sftp"
     app_path = os.path.join(app_root, "htdocs")
     logs_path = os.path.join(app_root, "logs")
@@ -187,7 +188,7 @@ def create_app():
 
     # Nginx + SSL creation
     configure_nginx(app_name, [temp_domain])
-    install_ssl([temp_domain])
+    install_ssl(temp_domain)
 
     # Ensure proper ownership and permissions for index.html
     index_path = os.path.join(app_path, "index.html")
