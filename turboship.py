@@ -220,12 +220,12 @@ def create_app():
     # Set group permissions for the root directory
     os.system(f"chmod -R g+rwX {app_root}")
 
-def configure_nginx(project, domains, enable_ssl=False):
+def configure_nginx(app, domains):
     if isinstance(domains, str):
         domains = [domains]
 
     server_names = " ".join(domains)
-    root_path = f"/var/www/{project}_sftp/htdocs"
+    root_path = f"/var/www/{app}_sftp/htdocs"
 
     # Generate NGINX configuration
     conf = f"""
@@ -233,6 +233,16 @@ def configure_nginx(project, domains, enable_ssl=False):
             listen 80;
             server_name {server_names};
             return 301 https://$host$request_uri;
+        }}
+
+        server {{
+            listen 443 ssl;
+            server_name {server_names};
+
+            ssl_certificate /etc/letsencrypt/live/{domains[0]}/fullchain.pem; # managed by Certbot
+            ssl_certificate_key /etc/letsencrypt/live/{domains[0]}/privkey.pem; # managed by Certbot
+            include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+            ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
 
             root {root_path};
             index index.html;
@@ -262,7 +272,7 @@ def configure_nginx(project, domains, enable_ssl=False):
         }}
         """
 
-    path = f"/etc/nginx/sites-available/{project}"
+    path = f"/etc/nginx/sites-available/{app}"
     try:
         with open(path, "w") as f:
             f.write(conf)
@@ -272,7 +282,7 @@ def configure_nginx(project, domains, enable_ssl=False):
         return
 
     # Create symlink in sites-enabled
-    symlink = f"/etc/nginx/sites-enabled/{project}"
+    symlink = f"/etc/nginx/sites-enabled/{app}"
     try:
         if not os.path.exists(symlink):
             os.symlink(path, symlink)
@@ -326,7 +336,7 @@ def install_ssl(domains):
 
     # Update NGINX configuration with SSL enabled
     for domain in domains:
-        configure_nginx(domain, [domain], enable_ssl=True)
+        configure_nginx(domain, [domain])
         os.system("nginx -t && systemctl reload nginx")
 
 def test_project(project):
