@@ -73,22 +73,10 @@ def create_app():
     temp_domain = f"{app_name}.{get_public_ip()}.sslip.io"
     now = datetime.now().isoformat()
 
-    app_root = f"/var/www/{sftp_user}"
+    app_root = f"/var/www/{app_name}_sftp"
     app_path = os.path.join(app_root, "htdocs")
     logs_path = os.path.join(app_root, "logs")
     api_path = os.path.join(app_root, "api")
-
-    print(colored(figlet_format("Turboship"), "green"))
-    print(colored(f"Turboship v{TURBOSHIP_VERSION} - App Summary:", "yellow"))
-    print(f"  🚀 App Name     : {colored(app_name, 'cyan')}")
-    print(f"  🌐 Temp Domain  : {colored('https://' + temp_domain, 'green')}")
-    print(f"  📦 SFTP User    : {sftp_user}")
-    print(f"  🔑 SFTP Pass    : {sftp_pass}")
-    print(f"  🛢️  DB Type      : {db_type}")
-    print(f"  🗄️  DB Name      : {db_name}")
-    print(f"  👤 DB User      : {db_user}")
-    print(f"  🔐 DB Password  : {db_pass}")
-    print(f"  🕒 Created At   : {now}\n")
 
     # Create user with SSH + SFTP (middle-ground approach)
     os.system(f"useradd -m -d {app_root} -s /bin/bash {sftp_user}")
@@ -119,7 +107,7 @@ def create_app():
             {{
             name: "{app_name}-backend",
             script: "npm start",
-            cwd: "/var/www/{sftp_user}/api",
+            cwd: "/var/www/{app_name}_sftp/api",
             watch: false,
             env: {{
                 NODE_ENV: "production"
@@ -155,7 +143,7 @@ def create_app():
             {{
             name: "{app_name}-backend",
             script: "npm start",
-            cwd: "/var/www/{sftp_user}/api",
+            cwd: "/var/www/{app_name}_sftp/api",
             watch: false,
             env: {{
                 NODE_ENV: "production"
@@ -219,6 +207,19 @@ def create_app():
 
     # Set group permissions for the root directory
     os.system(f"chmod -R g+rwX {app_root}")
+
+    # Print summary
+    print(colored(figlet_format("Turboship"), "green"))
+    print(colored(f"Turboship v{TURBOSHIP_VERSION} - App Summary:", "yellow"))
+    print(f"  🚀 App Name     : {colored(app_name, 'cyan')}")
+    print(f"  🌐 Temp Domain  : {colored('https://' + temp_domain, 'green')}")
+    print(f"  📦 SFTP User    : {sftp_user}")
+    print(f"  🔑 SFTP Pass    : {sftp_pass}")
+    print(f"  🛢️  DB Type      : {db_type}")
+    print(f"  🗄️  DB Name      : {db_name}")
+    print(f"  👤 DB User      : {db_user}")
+    print(f"  🔐 DB Password  : {db_pass}")
+    print(f"  🕒 Created At   : {now}\n")
 
 def configure_nginx(app, domains):
     if isinstance(domains, str):
