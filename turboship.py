@@ -11,7 +11,7 @@ from tabulate import tabulate
 from termcolor import colored
 from pyfiglet import figlet_format
 
-TURBOSHIP_VERSION = "0.7"
+TURBOSHIP_VERSION = "0.8"
 DB_PATH = "/opt/turboship/turboship.db"
 
 def init_db():
@@ -484,7 +484,7 @@ def info_app(app):
 def main():
     init_db()
     parser = argparse.ArgumentParser(
-        description=colored("Turboship v0.7 - Multi-App Hosting Tool", "cyan"),
+        description=colored(f"Turboship v{TURBOSHIP_VERSION} - Multi-App Hosting Tool", "cyan"),
         formatter_class=argparse.RawTextHelpFormatter
     )
 
