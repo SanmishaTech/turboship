@@ -187,7 +187,7 @@ def create_app():
 
     # Nginx + SSL creation
     configure_nginx(app_name, [temp_domain])
-    install_ssl(temp_domain)
+    # install_ssl(temp_domain)
 
     # Ensure proper ownership and permissions for index.html
     index_path = os.path.join(app_path, "index.html")
