@@ -223,9 +223,11 @@ def create_app():
 def configure_nginx(project, domains, enable_ssl=False):
     if isinstance(domains, str):
         domains = [domains]
+
     server_names = " ".join(domains)
     root_path = f"/var/www/{project}_sftp/htdocs"
 
+    # Generate NGINX configuration
     conf = f"""
         server {{
             listen 80;
@@ -234,14 +236,10 @@ def configure_nginx(project, domains, enable_ssl=False):
         }}
 
         server {{
-            {f'listen 443 ssl;' if enable_ssl else ''}
+            listen 443 ssl;
             server_name {server_names};
 
-            {f'ssl_certificate /etc/letsencrypt/live/{domains[0]}/fullchain.pem; # managed by Certbot\n' if enable_ssl else ''}
-            {f'ssl_certificate_key /etc/letsencrypt/live/{domains[0]}/privkey.pem; # managed by Certbot\n' if enable_ssl else ''}
-            {f'include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot\n' if enable_ssl else ''}
-            {f'ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot\n' if enable_ssl else ''}
-
+            # SSL-related lines are excluded to avoid conflicts with Certbot
             root {root_path};
             index index.html;
 
@@ -279,6 +277,7 @@ def configure_nginx(project, domains, enable_ssl=False):
         print(colored(f"❌ Failed to write NGINX configuration: {e}", "red"))
         return
 
+    # Create symlink in sites-enabled
     symlink = f"/etc/nginx/sites-enabled/{project}"
     try:
         if not os.path.exists(symlink):
@@ -288,6 +287,7 @@ def configure_nginx(project, domains, enable_ssl=False):
         print(colored(f"❌ Failed to create symlink: {e}", "red"))
         return
 
+    # Create .well-known directory for SSL challenges
     try:
         os.makedirs(os.path.join(root_path, ".well-known/acme-challenge/"), exist_ok=True)
         print(colored("✅ .well-known/acme-challenge directory created", "green"))
@@ -295,12 +295,13 @@ def configure_nginx(project, domains, enable_ssl=False):
         print(colored(f"❌ Failed to create .well-known/acme-challenge directory: {e}", "red"))
         return
 
+    # Test and reload NGINX
     try:
         result = os.system("nginx -t && systemctl reload nginx")
         if result != 0:
             print(colored("❌ NGINX reload failed. Check configuration syntax.", "red"))
-            os.system("nginx -t")  # Check NGINX configuration
-            exit(1)  # Stop execution
+            os.system("nginx -t")  # Show detailed errors
+            exit(1)
         else:
             print(colored("✅ NGINX reloaded successfully.", "green"))
     except Exception as e:
@@ -323,54 +324,11 @@ def install_ssl(domains):
     result = os.system(certbot_command)
 
     if result != 0:
-        print(colored("❌ Certbot failed to generate SSL certificates. Retrying...", "red"))
+        print(colored("❌ Certbot failed to generate SSL certificates. Check logs and domain accessibility.", "red"))
+        os.system("nginx -t")  # Show detailed errors
+        return
 
-        # Temporarily disable SSL in NGINX
-        original_configs = {}
-        for domain in domains:
-            nginx_path = f"/etc/nginx/sites-available/{domain}"
-            if os.path.exists(nginx_path):
-                with open(nginx_path, "r") as f:
-                    original_configs[domain] = f.read()
-                conf = original_configs[domain]
-                conf = conf.replace("listen 443 ssl;", "# listen 443 ssl;")
-                conf = conf.replace("ssl_certificate", "# ssl_certificate")
-                conf = conf.replace("ssl_certificate_key", "# ssl_certificate_key")
-                with open(nginx_path, "w") as f:
-                    f.write(conf)
-
-        print(colored("🔧 Temporarily disabled SSL in NGINX configurations.", "yellow"))
-        os.system("nginx -t && systemctl reload nginx")
-
-        # Retry Certbot
-        print(colored(f"🔧 Retrying Certbot command: {certbot_command}", "cyan"))
-        result = os.system(certbot_command)
-
-        if result != 0:
-            print(colored("❌ Certbot failed again. Please check domain accessibility and logs.", "red"))
-
-            # Restore original NGINX configurations
-            for domain, original_conf in original_configs.items():
-                nginx_path = f"/etc/nginx/sites-available/{domain}"
-                with open(nginx_path, "w") as f:
-                    f.write(original_conf)
-
-            print(colored("🔧 Restored original NGINX configurations.", "yellow"))
-            os.system("nginx -t && systemctl reload nginx")
-            return
-
-        print(colored("✅ SSL certificates generated successfully.", "green"))
-
-        # Restore original NGINX configurations
-        for domain, original_conf in original_configs.items():
-            nginx_path = f"/etc/nginx/sites-available/{domain}"
-            with open(nginx_path, "w") as f:
-                f.write(original_conf)
-
-        print(colored("🔧 Restored original NGINX configurations.", "yellow"))
-        os.system("nginx -t && systemctl reload nginx")
-    else:
-        print(colored("✅ SSL certificates generated successfully.", "green"))
+    print(colored("✅ SSL certificates generated successfully.", "green"))
 
     # Update NGINX configuration with SSL enabled
     for domain in domains:
