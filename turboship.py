@@ -264,6 +264,17 @@ def configure_nginx(app, domains, api_path=None):
     if api_path:
         api_location = f"""
             location /api/ {{
+                proxy_pass http://localhost:{port};
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection 'upgrade';
+                proxy_set_header Host $host;
+                proxy_cache_bypass $http_upgrade;
+            }}
+        """
+    else:
+        api_location = f"""
+            location /api/ {{
                 proxy_pass http://localhost:{port}/api;
                 proxy_http_version 1.1;
                 proxy_set_header Upgrade $http_upgrade;
@@ -272,7 +283,8 @@ def configure_nginx(app, domains, api_path=None):
                 proxy_cache_bypass $http_upgrade;
             }}
         """
-        conf = conf.replace("location / {\n                try_files $uri $uri/ /index.html;\n            }\n\n", api_location + "\n            location / {\n                try_files $uri $uri/ /index.html;\n            }\n\n")
+
+    conf = conf.replace("location / {\n                try_files $uri $uri/ /index.html;\n            }\n\n", api_location + "\n            location / {\n                try_files $uri $uri/ /index.html;\n            }\n\n")
 
     # Use app name for NGINX configuration file
     path = f"/etc/nginx/sites-available/{app}"
