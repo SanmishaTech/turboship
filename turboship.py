@@ -579,7 +579,7 @@ def main():
                 else:
                     print("Invalid choice. Please try again.")
         except KeyboardInterrupt:
-            print("\nExiting interactive mode.")
+            print("\nExiting Turboship mode.")
     else:
         # Banner
         print(colored(figlet_format("Turboship"), "green"))
