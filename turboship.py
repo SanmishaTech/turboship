@@ -346,17 +346,17 @@ def install_ssl(app):
 
     conn.close()
 
-def test_project(project):
+def test_app(app):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT temp_domain, real_domain, db_type, db_name, db_user, db_pass FROM apps WHERE project = ?", (project,))
+    c.execute("SELECT temp_domain, real_domain, db_type, db_name, db_user, db_pass FROM apps WHERE app = ?", (app,))
     row = c.fetchone()
     if not row:
-        print(colored("❌ Project not found.", "red"))
+        print(colored("❌ App not found.", "red"))
         return
 
     temp_domain, real_domain, db_type, db_name, db_user, db_pass = row
-    print(colored(f"\nTesting project '{project}':", "cyan"))
+    print(colored(f"\nTesting app '{app}':", "cyan"))
 
     for domain in filter(None, [temp_domain, real_domain]):
         print(f"🌐 Testing domain: {domain}")
