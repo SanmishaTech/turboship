@@ -29,6 +29,7 @@ def init_db():
             db_pass TEXT,
             sftp_user TEXT,
             sftp_pass TEXT,
+            port INTEGER,
             created_at TEXT
         )
     ''')
@@ -58,6 +59,19 @@ def prompt_database():
     choice = input("Enter choice [1/2]: ").strip()
     return "mariadb" if choice == "1" else "postgres"
 
+def allocate_port():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT port FROM apps")
+    used_ports = [row[0] for row in c.fetchall()]
+    conn.close()
+
+    # Start allocating ports from 3000
+    port = 3000
+    while port in used_ports:
+        port += 1
+    return port
+
 def create_app():
     app_name = input("Enter app name: ").strip()
     if not validate_app_name(app_name):
@@ -75,13 +89,14 @@ def create_app():
 
     # Save to SQLite first
     conn = sqlite3.connect(DB_PATH)
+    port = allocate_port()
     conn.execute(
         """
         INSERT INTO apps 
-        (app, temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (app, temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, port, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (app_name, temp_domain, None, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, now)
+        (app_name, temp_domain, None, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, port, now)
     )
     conn.commit()
     conn.close()
@@ -213,17 +228,7 @@ def create_app():
     os.system(f"chmod -R g+rwX {app_root}")
 
     # Print summary
-    print(colored(figlet_format("Turboship"), "green"))
-    print(colored(f"Turboship v{TURBOSHIP_VERSION} - App Summary:", "yellow"))
-    print(f"  🚀 App Name     : {colored(app_name, 'cyan')}")
-    print(f"  🌐 Temp Domain  : {colored('https://' + temp_domain, 'green')}")
-    print(f"  📦 SFTP User    : {sftp_user}")
-    print(f"  🔑 SFTP Pass    : {sftp_pass}")
-    print(f"  🛢️  DB Type      : {db_type}")
-    print(f"  🗄️  DB Name      : {db_name}")
-    print(f"  👤 DB User      : {db_user}")
-    print(f"  🔐 DB Password  : {db_pass}")
-    print(f"  🕒 Created At   : {now}\n")
+    info_app(app_name)
 
 def configure_nginx(app, domains):
     if isinstance(domains, str):
@@ -231,6 +236,17 @@ def configure_nginx(app, domains):
 
     server_names = " ".join(domains)
     root_path = f"/var/www/{app}_sftp/htdocs"  # Use app name instead of domain
+
+    # Get the allocated port for the app
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT port FROM apps WHERE app = ?", (app,))
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        print(colored(f"❌ App '{app}' not found in DB.", "red"))
+        return
+    port = row[0]
 
     # Generate NGINX configuration
     conf = f"""
@@ -248,7 +264,7 @@ def configure_nginx(app, domains):
             }}
 
             location /api/ {{
-                proxy_pass http://localhost:3000/;
+                proxy_pass http://localhost:{port}/api;
                 proxy_http_version 1.1;
                 proxy_set_header Upgrade $http_upgrade;
                 proxy_set_header Connection 'upgrade';
@@ -257,7 +273,7 @@ def configure_nginx(app, domains):
             }}
 
             location / {{
-                try_files $uri $uri/ =404;
+                try_files $uri $uri/ /index.html;
             }}
 
             add_header X-Frame-Options "SAMEORIGIN";
@@ -368,7 +384,7 @@ def list_apps():
     print(tabulate(rows, headers=headers, tablefmt="fancy_grid"))
     conn.close()
 
-def remove_app(app):
+def delete_app(app):
     confirm = input(colored(f"⚠️ Are you sure you want to delete '{app}' and all its resources? (yes/no): ", "red"))
     if confirm.lower() != "yes":
         print("❌ Aborted.")
@@ -479,6 +495,7 @@ def info_app(app):
     print(f"  🗄️  DB Name      : {db_name}")
     print(f"  👤 DB User      : {db_user}")
     print(f"  🔐 DB Password  : {db_pass}")
+    print(f"  🔌 API Port     : {port}")
     print(f"  🕒 Created At   : {created_at}\n")
 
     conn.close()
@@ -503,9 +520,9 @@ def main():
     # List subcommand
     subparsers.add_parser("list", help="List all created apps in a table")
 
-    # Remove subcommand
-    remove_parser = subparsers.add_parser("remove", help="Remove an app completely")
-    remove_parser.add_argument("app", metavar="APP", help="App name to remove")
+    # Delete subcommand
+    delete_parser = subparsers.add_parser("delete", help="Delete an app completely")
+    delete_parser.add_argument("app", metavar="APP", help="App name to delete")
 
     # Map-domain subcommand
     map_domain_parser = subparsers.add_parser("map-domain", help="Map real domain to existing app")
@@ -533,8 +550,8 @@ def main():
         test_app(args.app)
     elif args.command == "list":
         list_apps()
-    elif args.command == "remove":
-        remove_app(args.app)
+    elif args.command == "delete":
+        delete_app(args.app)
     elif args.command == "map-domain":
         map_domain(args.app, args.domain)
     elif args.command == "info":
@@ -547,7 +564,7 @@ def main():
             print("3. List Apps")
             print("4. Remove App")
             print("5. Map Domain")
-            print("6. Info App")
+            print("6. Display App Info")
             print("7. Exit")
 
             choice = input("Enter your choice: ").strip()
@@ -561,7 +578,7 @@ def main():
                 list_apps()
             elif choice == "4":
                 app_name = input("Enter app name: ").strip()
-                remove_app(app_name)
+                delete_app(app_name)
             elif choice == "5":
                 app_name = input("Enter app name: ").strip()
                 domain = input("Enter domain: ").strip()
