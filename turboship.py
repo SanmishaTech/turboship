@@ -482,7 +482,7 @@ def info_app(app):
         print(colored(f"❌ App '{app}' not found.", "red"))
         return
 
-    app_name, temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, created_at = row
+    app_name, temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass, port, created_at = row
 
     print(colored(figlet_format("Turboship"), "green"))
     print(colored(f"Turboship v{TURBOSHIP_VERSION} - App Information:", "yellow"))
