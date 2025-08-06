@@ -105,7 +105,10 @@ def create_app():
     app_root = f"/var/www/{app_name}_sftp"
     app_path = os.path.join(app_root, "htdocs")
     logs_path = os.path.join(app_root, "logs")
-    api_path = os.path.join(app_root, "api")
+
+    # Ask if API folder is needed
+    api_needed = input("Do you need an API folder? (yes/no) [no]: ").strip().lower() or "no"
+    api_path = os.path.join(app_root, "api") if api_needed == "yes" else None
 
     # Create user with SSH + SFTP (middle-ground approach)
     os.system(f"useradd -m -d {app_root} -s /bin/bash {sftp_user}")
@@ -114,11 +117,13 @@ def create_app():
     # Create directories
     os.makedirs(app_path, exist_ok=True)
     os.makedirs(logs_path, exist_ok=True)
-    os.makedirs(api_path, exist_ok=True)
+    if api_path:
+        os.makedirs(api_path, exist_ok=True)
 
     # Permissions
     os.system(f"chown -R {sftp_user}:{sftp_user} {app_path}")
-    os.system(f"chown -R {sftp_user}:{sftp_user} {api_path}")
+    if api_path:
+        os.system(f"chown -R {sftp_user}:{sftp_user} {api_path}")
     os.system(f"chown -R www-data:www-data {logs_path}")
 
     # Ensure proper permissions for htdocs directory
@@ -131,12 +136,13 @@ def create_app():
 
     # Ensure pm2.config.js is created before setting permissions
     pm2_config_path = os.path.join(app_root, "pm2.config.js")
+    cwd_path = api_path if api_needed == "yes" else app_path
     pm2_config = f"""module.exports = {{
         apps: [
             {{
             name: "{app_name}-backend",
             script: "npm start",
-            cwd: "/var/www/{app_name}_sftp/api",
+            cwd: "{cwd_path}",
             watch: false,
             env: {{
                 NODE_ENV: "production"
@@ -154,7 +160,7 @@ def create_app():
     # Ensure .well-known directory exists for SSL challenges
     os.makedirs(os.path.join(app_path, ".well-known/acme-challenge"), exist_ok=True)
     os.system(f"chown -R www-data:www-data {os.path.join(app_path, '.well-known')}")
-    os.system(f"chmod -R 755 {os.path.join(app_path, '.well-known')}")
+    os.system(f"chmod -R 755 {os.path.join(app_path, '.well-known')}"))
 
     # Landing page
     landing_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "landing_template.html")
@@ -165,24 +171,6 @@ def create_app():
             dst.write(content)
     else:
         print(colored("⚠️ landing_template.html not found — skipping landing page copy.", "yellow"))
-
-    # PM2 config
-    pm2_config = f"""module.exports = {{
-        apps: [
-            {{
-            name: "{app_name}-backend",
-            script: "npm start",
-            cwd: "/var/www/{app_name}_sftp/api",
-            watch: false,
-            env: {{
-                NODE_ENV: "production"
-            }}
-            }}
-        ]
-        }};
-        """
-    with open(os.path.join(app_root, "pm2.config.js"), "w") as f:
-        f.write(pm2_config)
 
     # Database setup
     if db_type == "mariadb":
@@ -202,7 +190,7 @@ def create_app():
             subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', cmd])
 
     # Nginx + SSL creation
-    configure_nginx(app_name, [temp_domain])
+    configure_nginx(app_name, [temp_domain], api_path)
     install_ssl(app_name)
 
     # Ensure proper ownership and permissions for index.html
@@ -230,7 +218,7 @@ def create_app():
     # Print summary
     info_app(app_name)
 
-def configure_nginx(app, domains):
+def configure_nginx(app, domains, api_path=None):
     if isinstance(domains, str):
         domains = [domains]
 
@@ -263,15 +251,6 @@ def configure_nginx(app, domains):
                 root {root_path};
             }}
 
-            location /api/ {{
-                proxy_pass http://localhost:{port}/api;
-                proxy_http_version 1.1;
-                proxy_set_header Upgrade $http_upgrade;
-                proxy_set_header Connection 'upgrade';
-                proxy_set_header Host $host;
-                proxy_cache_bypass $http_upgrade;
-            }}
-
             location / {{
                 try_files $uri $uri/ /index.html;
             }}
@@ -281,6 +260,19 @@ def configure_nginx(app, domains):
             add_header X-XSS-Protection "1; mode=block";
         }}
         """
+
+    if api_path:
+        api_location = f"""
+            location /api/ {{
+                proxy_pass http://localhost:{port}/api;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection 'upgrade';
+                proxy_set_header Host $host;
+                proxy_cache_bypass $http_upgrade;
+            }}
+        """
+        conf = conf.replace("location / {\n                try_files $uri $uri/ /index.html;\n            }\n\n", api_location + "\n            location / {\n                try_files $uri $uri/ /index.html;\n            }\n\n")
 
     # Use app name for NGINX configuration file
     path = f"/etc/nginx/sites-available/{app}"
