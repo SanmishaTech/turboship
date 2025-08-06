@@ -385,9 +385,9 @@ def test_app(app):
 def list_apps():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT app, temp_domain, real_domain, db_type, db_name, db_user, sftp_user, created_at FROM apps")
+    c.execute("SELECT app, temp_domain, real_domain, db_type, db_name, db_user, sftp_user, port, created_at FROM apps")
     rows = c.fetchall()
-    headers = ["App", "Temp Domain", "Real Domain", "DB Type", "DB Name", "DB User", "SFTP User", "Created At"]
+    headers = ["App", "Temp Domain", "Real Domain", "DB Type", "DB Name", "DB User", "SFTP User", "API Port", "Created At"]
     print(tabulate(rows, headers=headers, tablefmt="fancy_grid"))
     conn.close()
 
@@ -543,40 +543,43 @@ def main():
     args = parser.parse_args()
 
     if not args.command or args.command == "interactive":
-        while True:
-            print("\nAvailable Commands:")
-            print("1. Create App")
-            print("2. Test App")
-            print("3. List Apps")
-            print("4. Remove App")
-            print("5. Map Domain")
-            print("6. Display App Info")
-            print("7. Exit")
+        try:
+            while True:
+                print("\nAvailable Commands:")
+                print("1. Create App")
+                print("2. Test App")
+                print("3. List Apps")
+                print("4. Remove App")
+                print("5. Map Domain")
+                print("6. Display App Info")
+                print("7. Exit")
 
-            choice = input("Enter your choice: ").strip()
+                choice = input("Enter your choice: ").strip()
 
-            if choice == "1":
-                create_app()
-            elif choice == "2":
-                app_name = input("Enter app name: ").strip()
-                test_app(app_name)
-            elif choice == "3":
-                list_apps()
-            elif choice == "4":
-                app_name = input("Enter app name: ").strip()
-                delete_app(app_name)
-            elif choice == "5":
-                app_name = input("Enter app name: ").strip()
-                domain = input("Enter domain: ").strip()
-                map_domain(app_name, domain)
-            elif choice == "6":
-                app_name = input("Enter app name: ").strip()
-                info_app(app_name)
-            elif choice == "7":
-                print("Exiting interactive mode.")
-                break
-            else:
-                print("Invalid choice. Please try again.")
+                if choice == "1":
+                    create_app()
+                elif choice == "2":
+                    app_name = input("Enter app name: ").strip()
+                    test_app(app_name)
+                elif choice == "3":
+                    list_apps()
+                elif choice == "4":
+                    app_name = input("Enter app name: ").strip()
+                    delete_app(app_name)
+                elif choice == "5":
+                    app_name = input("Enter app name: ").strip()
+                    domain = input("Enter domain: ").strip()
+                    map_domain(app_name, domain)
+                elif choice == "6":
+                    app_name = input("Enter app name: ").strip()
+                    info_app(app_name)
+                elif choice == "7":
+                    print("Exiting interactive mode.")
+                    break
+                else:
+                    print("Invalid choice. Please try again.")
+        except KeyboardInterrupt:
+            print("\nExiting interactive mode.")
     else:
         # Banner
         print(colored(figlet_format("Turboship"), "green"))
