@@ -160,7 +160,7 @@ def create_app():
     # Ensure .well-known directory exists for SSL challenges
     os.makedirs(os.path.join(app_path, ".well-known/acme-challenge"), exist_ok=True)
     os.system(f"chown -R www-data:www-data {os.path.join(app_path, '.well-known')}")
-    os.system(f"chmod -R 755 {os.path.join(app_path, '.well-known')}"))
+    os.system(f"chmod -R 755 {os.path.join(app_path, '.well-known')}")
 
     # Landing page
     landing_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "landing_template.html")
