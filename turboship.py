@@ -533,6 +533,9 @@ def main():
     info_parser = subparsers.add_parser("info", help="Display detailed information about an app")
     info_parser.add_argument("app", metavar="APP", help="App name to display information for")
 
+    # Interactive subcommand
+    subparsers.add_parser("interactive", help="Run interactive mode")
+
     args = parser.parse_args()
 
     if not args.command:
