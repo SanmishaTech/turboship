@@ -349,13 +349,13 @@ def install_ssl(app):
 def test_app(app):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT temp_domain, real_domain, db_type, db_name, db_user, db_pass FROM apps WHERE app = ?", (app,))
+    c.execute("SELECT temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass FROM apps WHERE app = ?", (app,))
     row = c.fetchone()
     if not row:
         print(colored("❌ App not found.", "red"))
         return
 
-    temp_domain, real_domain, db_type, db_name, db_user, db_pass = row
+    temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass = row
     print(colored(f"\nTesting app '{app}':", "cyan"))
 
     for domain in filter(None, [temp_domain, real_domain]):
@@ -374,6 +374,13 @@ def test_app(app):
         result = subprocess.call(["psql", "-U", db_user, "-d", db_name, "-c", "\\l"], env=env)
 
     print(colored("✅ DB Connection OK" if result == 0 else "❌ DB Connection Failed", "green" if result == 0 else "red"))
+
+    print(f"📦 Testing SFTP connection for user: {sftp_user}")
+    try:
+        result = subprocess.call(["sftp", "-oBatchMode=no", "-oStrictHostKeyChecking=no", f"{sftp_user}@localhost"], stderr=subprocess.DEVNULL)
+        print(colored("✅ SFTP Connection OK" if result == 0 else "❌ SFTP Connection Failed", "green" if result == 0 else "red"))
+    except Exception as e:
+        print(colored("❌ SFTP Connection Failed", "red"))
 
 def list_apps():
     conn = sqlite3.connect(DB_PATH)
@@ -533,33 +540,9 @@ def main():
     info_parser = subparsers.add_parser("info", help="Display detailed information about an app")
     info_parser.add_argument("app", metavar="APP", help="App name to display information for")
 
-    # Interactive subcommand
-    subparsers.add_parser("interactive", help="Run interactive mode")
-
     args = parser.parse_args()
 
-    if not args.command:
-        parser.print_help()
-        exit(1)
-
-    # Banner
-    print(colored(figlet_format("Turboship"), "green"))
-    print(colored(f"Turboship v{TURBOSHIP_VERSION} CLI", "blue"))
-
-    # Command Handling
-    if args.command == "create":
-        create_app()
-    elif args.command == "test":
-        test_app(args.app)
-    elif args.command == "list":
-        list_apps()
-    elif args.command == "delete":
-        delete_app(args.app)
-    elif args.command == "map-domain":
-        map_domain(args.app, args.domain)
-    elif args.command == "info":
-        info_app(args.app)
-    elif args.command == "interactive":
+    if not args.command or args.command == "interactive":
         while True:
             print("\nAvailable Commands:")
             print("1. Create App")
@@ -595,8 +578,26 @@ def main():
             else:
                 print("Invalid choice. Please try again.")
     else:
-        print(colored("⚠️  No valid command given.\n", "yellow"))
-        parser.print_help()
+        # Banner
+        print(colored(figlet_format("Turboship"), "green"))
+        print(colored(f"Turboship v{TURBOSHIP_VERSION} CLI", "blue"))
+
+        # Command Handling
+        if args.command == "create":
+            create_app()
+        elif args.command == "test":
+            test_app(args.app)
+        elif args.command == "list":
+            list_apps()
+        elif args.command == "delete":
+            delete_app(args.app)
+        elif args.command == "map-domain":
+            map_domain(args.app, args.domain)
+        elif args.command == "info":
+            info_app(args.app)
+        else:
+            print(colored("⚠️  No valid command given.\n", "yellow"))
+            parser.print_help()
 
 if __name__ == "__main__":
     main()
