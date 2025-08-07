@@ -223,7 +223,7 @@ def configure_nginx(app, domains, api_path=None):
         domains = [domains]
 
     server_names = " ".join(domains)
-    root_path = f"/var/www/{app}_sftp/htdocs"  # Use app name instead of domain
+    root_path = f"/var/www/{app}_sftp/htdocs"
 
     # Get the allocated port for the app
     conn = sqlite3.connect(DB_PATH)
@@ -236,8 +236,39 @@ def configure_nginx(app, domains, api_path=None):
         return
     port = row[0]
 
-    # Generate NGINX configuration
-    conf = f"""
+    # Generate NGINX configuration based on whether a separate API is needed
+    if api_path is None:
+        # This configuration is for single-process apps like Next.js
+        # where the app server handles all routes (pages, api, static).
+        conf = f"""
+        server {{
+            listen 80;
+            server_name {server_names};
+
+            # Path for ACME challenge files for Let's Encrypt
+            location ^~ /.well-known/acme-challenge/ {{
+                allow all;
+                default_type "text/plain";
+                root {root_path};
+            }}
+
+            # Proxy all other requests to the running application
+            location / {{
+                proxy_pass http://localhost:{port};
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection 'upgrade';
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_cache_bypass $http_upgrade;
+            }}
+        }}
+        """
+    else:
+        # This configuration is for separate frontend (in htdocs) and backend (in api)
+        conf = f"""
         server {{
             listen 80;
             server_name {server_names};
@@ -245,12 +276,24 @@ def configure_nginx(app, domains, api_path=None):
             root {root_path};
             index index.html;
 
+            # Path for ACME challenge files for Let's Encrypt
             location ^~ /.well-known/acme-challenge/ {{
                 allow all;
                 default_type "text/plain";
                 root {root_path};
             }}
 
+            # Proxy API requests to the backend server
+            location /api/ {{
+                proxy_pass http://localhost:{port};
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection 'upgrade';
+                proxy_set_header Host $host;
+                proxy_cache_bypass $http_upgrade;
+            }}
+
+            # Serve static frontend files
             location / {{
                 try_files $uri $uri/ /index.html;
             }}
@@ -261,37 +304,13 @@ def configure_nginx(app, domains, api_path=None):
         }}
         """
 
-    if api_path:
-        api_location = f"""
-            location /api/ {{
-                proxy_pass http://localhost:{port};
-                proxy_http_version 1.1;
-                proxy_set_header Upgrade $http_upgrade;
-                proxy_set_header Connection 'upgrade';
-                proxy_set_header Host $host;
-                proxy_cache_bypass $http_upgrade;
-            }}
-        """
-    else:
-        api_location = f"""
-            location /api/ {{
-                proxy_pass http://localhost:{port}/api;
-                proxy_http_version 1.1;
-                proxy_set_header Upgrade $http_upgrade;
-                proxy_set_header Connection 'upgrade';
-                proxy_set_header Host $host;
-                proxy_cache_bypass $http_upgrade;
-            }}
-        """
-
-    conf = conf.replace("location / {\n                try_files $uri $uri/ /index.html;\n            }\n\n", api_location + "\n            location / {\n                try_files $uri $uri/ /index.html;\n            }\n\n")
-
     # Use app name for NGINX configuration file
     path = f"/etc/nginx/sites-available/{app}"
     try:
         with open(path, "w") as f:
             f.write(conf)
     except Exception as e:
+        print(colored(f"❌ Failed to write NGINX config for {app}: {e}", "red"))
         return
 
     # Create symlink in sites-enabled
@@ -300,21 +319,25 @@ def configure_nginx(app, domains, api_path=None):
         if not os.path.exists(symlink):
             os.symlink(path, symlink)
     except Exception as e:
+        print(colored(f"❌ Failed to create NGINX symlink for {app}: {e}", "red"))
         return
 
     # Create .well-known directory for SSL challenges
     try:
         os.makedirs(os.path.join(root_path, ".well-known/acme-challenge/"), exist_ok=True)
     except Exception as e:
+        print(colored(f"❌ Failed to create .well-known directory for {app}: {e}", "red"))
         return
 
     # Test and reload NGINX
     try:
         result = os.system("nginx -t && systemctl reload nginx")
         if result != 0:
+            print(colored("❌ NGINX configuration test failed. Please check the syntax.", "red"))
             os.system("nginx -t")  # Show detailed errors
             exit(1)
     except Exception as e:
+        print(colored(f"❌ Failed to reload NGINX: {e}", "red"))
         return
 
 
