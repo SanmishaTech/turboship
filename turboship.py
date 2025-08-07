@@ -191,7 +191,7 @@ def create_app():
 
     # Nginx + SSL creation
     configure_nginx(app_name, [temp_domain], api_path)
-    # install_ssl(app_name)
+    install_ssl(app_name)
 
     # Ensure proper ownership and permissions for index.html
     index_path = os.path.join(app_path, "index.html")
@@ -537,7 +537,7 @@ def info_app(app):
 def main():
     init_db()
     parser = argparse.ArgumentParser(
-        description=colored(f"Turboship v{TURBOSHIP_VERSION} - Multi-App Hosting Tool\n\nCommands:\n\ncreate: Create a new app\ntest: Run health checks for an app\nlist: List all created apps\nremove: Remove an app completely\nmap-domain: Map real domain to existing app\ninfo: Display detailed information about an app", "cyan"),
+        description=colored(f"Turboship v{TURBOSHIP_VERSION} - Multi-App Hosting Tool\n\nCommands:\n\ncreate: Create a new app\ntest: Run health checks for an app\nlist: List all created apps\ndelete: Delete an app completely\nmap-domain: Map real domain to existing app\ninfo: Display detailed information about an app", "cyan"),
         formatter_class=argparse.RawTextHelpFormatter
     )
 
@@ -576,7 +576,7 @@ def main():
                 print("1. Create App")
                 print("2. Test App")
                 print("3. List Apps")
-                print("4. Remove App")
+                print("4. Delete App")
                 print("5. Map Domain")
                 print("6. Display App Info")
                 print("7. Exit")
