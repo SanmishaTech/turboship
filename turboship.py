@@ -285,7 +285,7 @@ def configure_nginx(app, domains, api_path=None):
 
             # Proxy API requests to the backend server
             location /api/ {{
-                proxy_pass http://localhost:{port};
+                proxy_pass http://localhost:{port}/api/;
                 proxy_http_version 1.1;
                 proxy_set_header Upgrade $http_upgrade;
                 proxy_set_header Connection 'upgrade';
