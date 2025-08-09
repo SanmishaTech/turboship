@@ -220,7 +220,8 @@ def configure_nginx(app, domains, api_path=None):
         domains = [domains]
 
     server_names = " ".join(domains)
-    root_path = f"/var/www/{app}_sftp/htdocs"
+    # Directory matches create_app() (no _sftp suffix)
+    root_path = f"/var/www/{app}/htdocs"
 
     # Get the allocated port for the app
     conn = sqlite3.connect(DB_PATH)
@@ -434,7 +435,7 @@ def delete_app(app):
     if real_domain:
         domains.append(real_domain)
 
-    app_root = f"/var/www/{app}_sftp"
+    app_root = f"/var/www/{app}"
 
     # Backup DB (optional future improvement)
 
