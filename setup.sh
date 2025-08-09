@@ -30,7 +30,6 @@ sudo ufw allow OpenSSH
 sudo ufw allow 'Nginx Full'
 sudo ufw allow 3306/tcp  # MySQL Remote Access
 sudo ufw allow 5432/tcp  # PostgreSQL Remote Access
-sudo ufw allow 3000/tcp  # API Access
 sudo ufw --force enable
 
 # 5. Setup Directories
@@ -56,7 +55,7 @@ sudo sed -i "s|^#listen_addresses = 'localhost'|listen_addresses = '*'|" /etc/po
 sudo systemctl restart postgresql
 
 # 9. Configure SSH for SFTP with chroot
-echo "🔧 Configuring SSH for SFTP with chroot..."
+echo "🔧 Configuring SSH for SFTP"
 
 # SSH config: Enable password & interactive auth
 sudo sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' $SSH_CONFIG
@@ -65,15 +64,15 @@ sudo sed -i 's/^#\?ChallengeResponseAuthentication.*/ChallengeResponseAuthentica
 sudo sed -i 's/^#\?UsePAM.*/UsePAM yes/' $SSH_CONFIG
 
 # Configure chroot for SFTP users
-if ! grep -q "Match Group sftpusers" $SSH_CONFIG; then
-  sudo bash -c 'cat <<EOT >> $SSH_CONFIG
-Match Group sftpusers
-    ChrootDirectory /var/www/%u
-    ForceCommand internal-sftp
-    AllowTcpForwarding no
-    X11Forwarding no
-EOT'
-fi
+# if ! grep -q "Match Group sftpusers" $SSH_CONFIG; then
+#   sudo bash -c 'cat <<EOT >> $SSH_CONFIG
+# Match Group sftpusers
+#     ChrootDirectory /var/www/%u
+#     ForceCommand internal-sftp
+#     AllowTcpForwarding no
+#     X11Forwarding no
+# EOT'
+# fi
 
 # Ensure proper permissions for chroot directories
 sudo chown root:root $WWW_DIR

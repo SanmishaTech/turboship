@@ -215,11 +215,16 @@ def create_app():
             """
         subprocess.run(["mysql", "-u", "root", "-e", sql])
     elif db_type == "postgres":
-        for cmd in [
+        # Create user, database, and restrict access
+        pg_cmds = [
             f"CREATE USER {db_user} WITH PASSWORD '{db_pass}';",
             f"CREATE DATABASE {db_name} OWNER {db_user};",
-            f"GRANT CONNECT ON DATABASE {db_name} TO {db_user};"
-        ]:
+            f"REVOKE CONNECT ON DATABASE {db_name} FROM PUBLIC;",
+            f"GRANT CONNECT ON DATABASE {db_name} TO {db_user};",
+            f"GRANT USAGE ON SCHEMA public TO {db_user};",
+            f"GRANT ALL PRIVILEGES ON SCHEMA public TO {db_user};"
+        ]
+        for cmd in pg_cmds:
             subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', cmd])
 
     # Nginx config
@@ -456,9 +461,40 @@ def delete_app(app):
 
     app_root = f"/var/www/{app}"
 
-    # Backup DB (optional future improvement)
+    # ---- Terminate active sessions/processes (SSH, app, etc.) ----
+    print(colored("⏹  Terminating user processes (SSH / app)...", "yellow"))
+    # Try systemd-logind first (if available), fallback to pkill
+    if os.system(f"loginctl terminate-user {sftp_user} >/dev/null 2>&1") != 0:
+        os.system(f"pkill -TERM -u {sftp_user} >/dev/null 2>&1")
+        # Brief grace period
+        os.system("sleep 1")
+        os.system(f"pkill -KILL -u {sftp_user} >/dev/null 2>&1")
 
-    # Remove database user and database
+    # ---- Terminate DB connections for this app before drop ----
+    if db_type == "mariadb":
+        print(colored("⏹  Terminating MariaDB sessions...", "yellow"))
+        # Collect connection IDs for this DB user
+        try:
+            ids = subprocess.check_output(
+                ["mysql", "-N", "-u", "root", "-e",
+                 f"SELECT ID FROM information_schema.PROCESSLIST WHERE USER='{db_user}';"]
+            ).decode().strip().splitlines()
+            for cid in ids:
+                if cid.isdigit():
+                    os.system(f"mysql -u root -e 'KILL {cid};' >/dev/null 2>&1")
+        except Exception:
+            pass
+    elif db_type == "postgres":
+        print(colored("⏹  Terminating PostgreSQL sessions...", "yellow"))
+        terminate_sql = f"""
+            SELECT pg_terminate_backend(pid)
+            FROM pg_stat_activity
+            WHERE (datname = '{db_name}' OR usename = '{db_user}')
+              AND pid <> pg_backend_pid();
+        """
+        subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', terminate_sql], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # ---- Drop database & user ----
     if db_type == "mariadb":
         sql = f"""
         DROP DATABASE IF EXISTS {db_name};
@@ -469,7 +505,7 @@ def delete_app(app):
         subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', f"DROP DATABASE IF EXISTS {db_name};"])
         subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', f"DROP ROLE IF EXISTS {db_user};"])
 
-    # Remove Linux user
+    # Remove Linux user (after processes killed)
     subprocess.run(["userdel", "-r", sftp_user], stderr=subprocess.DEVNULL)
 
     # Remove Nginx config
@@ -479,7 +515,6 @@ def delete_app(app):
         os.remove(nginx_symlink)
     if os.path.exists(nginx_path):
         os.remove(nginx_path)
-
     os.system("nginx -t && systemctl reload nginx")
 
     # Remove SSL certificates
