@@ -184,14 +184,17 @@ def create_app():
     elif db_type == "postgres":
         commands = [
             f"CREATE USER {db_user} WITH PASSWORD '{db_pass}';",
-            f"CREATE DATABASE {db_name} OWNER {db_user};"
+            f"CREATE DATABASE {db_name} OWNER {db_user};",
+            f"REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;",
+            f"REVOKE CONNECT ON DATABASE template1 FROM PUBLIC;",
+            f"GRANT CONNECT ON DATABASE {db_name} TO {db_user};"
         ]
         for cmd in commands:
             subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', cmd])
 
     # Nginx + SSL creation
     configure_nginx(app_name, [temp_domain], api_path)
-    install_ssl(app_name)
+    # install_ssl(app_name)
 
     # Ensure proper ownership and permissions for index.html
     index_path = os.path.join(app_path, "index.html")
@@ -214,6 +217,12 @@ def create_app():
 
     # Set group permissions for the root directory
     os.system(f"chmod -R g+rwX {app_root}")
+
+    # Set umask for the SFTP user
+    sftp_profile_path = os.path.join(app_root, ".bashrc")
+    with open(sftp_profile_path, "a") as f:
+        f.write("\n# Set umask for SFTP user\n")
+        f.write("umask 022\n")
 
     # Print summary
     info_app(app_name)
