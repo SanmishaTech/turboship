@@ -131,10 +131,15 @@ def create_app():
 
     # --- Create SSH+SFTP user if not exists ---
     if subprocess.run(["id", "-u", sftp_user], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
+        # Create user with correct home directory
         os.system(f"useradd -m -d {app_root} -s /bin/bash {sftp_user}")
+        os.system(f"usermod -d {app_root} {sftp_user}")  # force home in case app_root existed
+
+        # Set password immediately
         subprocess.run(["bash", "-c", f"echo '{sftp_user}:{sftp_pass}' | chpasswd"])
     else:
         print(colored(f"User {sftp_user} already exists. Skipping user creation.", "yellow"))
+        os.system(f"usermod -d {app_root} {sftp_user}")  # ensure home path is correct
 
     # --- Add to www-data group ---
     os.system(f"usermod -aG www-data {sftp_user}")
