@@ -110,9 +110,18 @@ def create_app():
     api_needed = input("Do you need an API folder? (yes/no) [no]: ").strip().lower() or "no"
     api_path = os.path.join(app_root, "api") if api_needed == "yes" else None
 
-    # Create user with SSH + SFTP (middle-ground approach)
+    # Create user with SSH + SFTP
     os.system(f"useradd -m -d {app_root} -s /bin/bash {sftp_user}")
     subprocess.run(["bash", "-c", f"echo '{sftp_user}:{sftp_pass}' | chpasswd"])
+
+    # Restrict the user to SFTP only
+    subprocess.run(["bash", "-c", f"echo 'Match User {sftp_user}' >> /etc/ssh/sshd_config"])
+    subprocess.run(["bash", "-c", f"echo 'ChrootDirectory {app_root}' >> /etc/ssh/sshd_config"])
+    subprocess.run(["bash", "-c", f"echo 'ForceCommand internal-sftp' >> /etc/ssh/sshd_config"])
+    subprocess.run(["bash", "-c", f"echo 'AllowTcpForwarding no' >> /etc/ssh/sshd_config"])
+
+    # Restart SSH service to apply changes
+    os.system("systemctl restart sshd")
 
     # Create directories
     os.makedirs(app_path, exist_ok=True)
