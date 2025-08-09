@@ -110,9 +110,14 @@ def create_app():
     api_needed = input("Do you need an API folder? (yes/no) [no]: ")
 
 
-    # Create user with SSH + SFTP
-    os.system(f"useradd -m -d {app_root} -s /bin/bash {sftp_user}")
-    subprocess.run(["bash", "-c", f"echo '{sftp_user}:{sftp_pass}' | chpasswd"])
+    # Check if the user already exists
+    user_check = subprocess.run(["id", "-u", sftp_user], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if user_check.returncode != 0:
+        # Create user with SSH + SFTP
+        os.system(f"useradd -m -d {app_root} -s /bin/bash {sftp_user}")
+        subprocess.run(["bash", "-c", f"echo '{sftp_user}:{sftp_pass}' | chpasswd"])
+    else:
+        print(colored(f"User {sftp_user} already exists. Skipping user creation.", "yellow"))
 
     # Restrict the user to SFTP only
     # Removed redundant code for appending to sshd_config as Match Group block is already present.
