@@ -105,7 +105,6 @@ def create_app():
     temp_domain = f"{app_name}.{get_public_ip()}.sslip.io"
     now = datetime.now().isoformat()
 
-    # Save to SQLite first
     conn = sqlite3.connect(DB_PATH)
     port = allocate_port()
     conn.execute(
@@ -119,160 +118,96 @@ def create_app():
     conn.commit()
     conn.close()
 
-    # Update app_root to exclude temp_domain
     app_root = f"/var/www/{app_name}_sftp"
     app_path = os.path.join(app_root, "htdocs")
     logs_path = os.path.join(app_root, "logs")
     api_path = os.path.join(app_root, "api")
 
-    # Check if the user already exists
-    user_check = subprocess.run(["id", "-u", sftp_user], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if user_check.returncode != 0:
-        # Create user with SSH + SFTP
+    if subprocess.run(["id", "-u", sftp_user], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
         os.system(f"useradd -m -d {app_root} -s /bin/bash {sftp_user}")
         subprocess.run(["bash", "-c", f"echo '{sftp_user}:{sftp_pass}' | chpasswd"])
     else:
         print(colored(f"User {sftp_user} already exists. Skipping user creation.", "yellow"))
 
-    # Restrict the user to SFTP only
-    # Removed redundant code for appending to sshd_config as Match Group block is already present.
-
-    # Add the SFTP user to the sftpusers group
     os.system("groupadd -f sftpusers")
     os.system(f"usermod -aG sftpusers {sftp_user}")
 
-    # Ensure the ChrootDirectory exists and has the correct permissions
-    chroot_dir = os.path.join(app_root, "..")
-    os.makedirs(chroot_dir, exist_ok=True)
-    log_and_run(f"chown root:root {chroot_dir}")
-    log_and_run(f"chmod 755 {chroot_dir}")
-
-    # Ensure the user's home directory inside the chroot is owned by root
-    os.system(f"chown root:root {app_root}")
-    os.system(f"chmod 755 {app_root}")
-
-    # Create a writable subdirectory for the user
-    user_writable_dir = os.path.join(app_root, "htdocs")
-    os.makedirs(user_writable_dir, exist_ok=True)
-    os.system(f"chown {sftp_user}:{sftp_user} {user_writable_dir}")
-    os.system(f"chmod 755 {user_writable_dir}")
-
-    # Create directories
     os.makedirs(app_path, exist_ok=True)
     os.makedirs(logs_path, exist_ok=True)
     os.makedirs(api_path, exist_ok=True)
 
-    # Permissions
+    # Initial ownership (kept once)
     os.system(f"chown -R {sftp_user}:{sftp_user} {app_path}")
     os.system(f"chown -R {sftp_user}:{sftp_user} {api_path}")
-    os.system(f"chown -R www-data:www-data {logs_path}")
-
-    # Ensure proper permissions for htdocs directory
-    os.system(f"chown -R www-data:www-data {app_path}")
+    os.system(f"chown -R {sftp_user}:{sftp_user} {logs_path}")
     os.system(f"chmod -R 755 {app_path}")
+    os.system(f"chmod -R 750 {api_path}")
+    os.system(f"chmod -R 750 {logs_path}")
 
-    # Correct ownership and permissions for logs directory
-    os.system(f"chown -R www-data:www-data {logs_path}")
-    os.system(f"chmod -R 755 {logs_path}")
-
-    # Ensure pm2.config.js is created before setting permissions
     pm2_config_path = os.path.join(app_root, "pm2.config.js")
     cwd_path = api_path
-    pm2_config = f"""module.exports = {{
-        apps: [
-            {{
-            name: "{app_name}-backend",
-            script: "npm start",
-            cwd: "{cwd_path}",
-            watch: false,
-            env: {{
-                NODE_ENV: "production"
-            }}
-            }}
-        ]
-        }};
-        """
     if not os.path.exists(pm2_config_path):
         with open(pm2_config_path, "w") as f:
-            f.write(pm2_config)
+            f.write(f"""module.exports = {{
+        apps: [
+            {{
+                name: "{app_name}-backend",
+                script: "npm start",
+                cwd: "{cwd_path}",
+                watch: false,
+                env: {{
+                    NODE_ENV: "production",
+                    PORT: {port}
+                }}
+            }}
+        ]
+}};""")
     os.system(f"chown {sftp_user}:{sftp_user} {pm2_config_path}")
     os.system(f"chmod 644 {pm2_config_path}")
-
-    # Ensure .well-known directory exists for SSL challenges
-    os.makedirs(os.path.join(app_path, ".well-known/acme-challenge"), exist_ok=True)
-    os.system(f"chown -R www-data:www-data {os.path.join(app_path, '.well-known')}")
-    os.system(f"chmod -R 755 {os.path.join(app_path, '.well-known')}")
 
     # Landing page
     landing_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "landing_template.html")
     if os.path.exists(landing_path):
-        with open(landing_path) as src:
-            content = src.read().replace("{app_name}", app_name)
-        with open(os.path.join(app_path, "index.html"), "w") as dst:
-            dst.write(content)
+        index_target = os.path.join(app_path, "index.html")
+        if not os.path.exists(index_target):
+            with open(landing_path) as src, open(index_target, "w") as dst:
+                dst.write(src.read().replace("{app_name}", app_name))
+            os.system(f"chown {sftp_user}:{sftp_user} {index_target}")
+            os.system(f"chmod 644 {index_target}")
     else:
         print(colored("⚠️ landing_template.html not found — skipping landing page copy.", "yellow"))
 
-    # Database setup
     if db_type == "mariadb":
         sql = f"""
-        CREATE DATABASE IF NOT EXISTS {db_name};
-        CREATE USER IF NOT EXISTS '{db_user}'@'%' IDENTIFIED BY '{db_pass}';
-        GRANT ALL PRIVILEGES ON {db_name}.* TO '{db_user}'@'%';
-        FLUSH PRIVILEGES;
-        """
+CREATE DATABASE IF NOT EXISTS {db_name};
+CREATE USER IF NOT EXISTS '{db_user}'@'%' IDENTIFIED BY '{db_pass}';
+GRANT ALL PRIVILEGES ON {db_name}.* TO '{db_user}'@'%';
+FLUSH PRIVILEGES;
+"""
         subprocess.run(["mysql", "-u", "root", "-e", sql])
     elif db_type == "postgres":
-        commands = [
+        for cmd in [
             f"CREATE USER {db_user} WITH PASSWORD '{db_pass}';",
             f"CREATE DATABASE {db_name} OWNER {db_user};",
-            f"REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;",
-            f"REVOKE CONNECT ON DATABASE template1 FROM PUBLIC;",
             f"GRANT CONNECT ON DATABASE {db_name} TO {db_user};"
-        ]
-        for cmd in commands:
+        ]:
             subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', cmd])
 
-    # Nginx + SSL creation
     configure_nginx(app_name, [temp_domain], api_path)
-    # install_ssl(app_name)
 
-    # Ensure proper ownership and permissions for index.html
-    index_path = os.path.join(app_path, "index.html")
-    if os.path.exists(index_path):
-        os.system(f"chown www-data:www-data {index_path}")
-        os.system(f"chmod 644 {index_path}")
-
-    # Ensure all files created via SFTP or SSH have www-data ownership
-    os.system(f"chown -R www-data:www-data {app_root}")
-
-    # Ensure proper ownership and permissions for the root directory
+    # Final unified ownership (single pass)
     os.system(f"chown -R {sftp_user}:{sftp_user} {app_root}")
-    os.system(f"chmod -R 755 {app_root}")
-
-    # Add the SFTP user to the www-data group
+    os.system(f"chmod -R 750 {app_root}")
+    os.system(f"chmod -R 755 {app_path}")
     os.system(f"usermod -aG www-data {sftp_user}")
 
-    # Set group ownership of the root directory to www-data
-    os.system(f"chgrp -R www-data {app_root}")
-
-    # Set group permissions for the root directory
-    os.system(f"chmod -R g+rwX {app_root}")
-
-    # Set umask for the SFTP user
+    # Ensure umask (append once)
     sftp_profile_path = os.path.join(app_root, ".bashrc")
     with open(sftp_profile_path, "a") as f:
-        f.write("\n# Set umask for SFTP user\n")
-        f.write("umask 022\n")
+        f.write("\n# Turboship defaults\numask 022\n")
 
-    # Ensure the target directory has the correct group ownership and setgid bit
-    os.system(f"chown -R {sftp_user}:www-data {app_root}")
-    os.system(f"chmod -R g+rwX {app_root}")
-    os.system(f"chmod g+s {app_root}")
-
-    # Print summary
     info_app(app_name)
-
+#
 def configure_nginx(app, domains, api_path=None):
     if isinstance(domains, str):
         domains = [domains]
