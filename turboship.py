@@ -115,10 +115,7 @@ def create_app():
     subprocess.run(["bash", "-c", f"echo '{sftp_user}:{sftp_pass}' | chpasswd"])
 
     # Restrict the user to SFTP only
-    subprocess.run(["bash", "-c", f"echo 'Match User {sftp_user}' >> /etc/ssh/sshd_config"])
-    subprocess.run(["bash", "-c", f"echo 'ChrootDirectory {app_root}' >> /etc/ssh/sshd_config"])
-    subprocess.run(["bash", "-c", f"echo 'ForceCommand internal-sftp' >> /etc/ssh/sshd_config"])
-    subprocess.run(["bash", "-c", f"echo 'AllowTcpForwarding no' >> /etc/ssh/sshd_config"])
+    # Removed redundant code for appending to sshd_config as Match Group block is already present.
 
     # Add the SFTP user to the sftpusers group
     os.system("groupadd -f sftpusers")
@@ -129,9 +126,6 @@ def create_app():
     os.makedirs(chroot_dir, exist_ok=True)
     os.system(f"chown root:root {chroot_dir}")
     os.system(f"chmod 755 {chroot_dir}")
-
-    # Restart SSH service to apply changes
-    os.system("systemctl restart sshd")
 
     # Create directories
     os.makedirs(app_path, exist_ok=True)
@@ -242,6 +236,11 @@ def create_app():
     with open(sftp_profile_path, "a") as f:
         f.write("\n# Set umask for SFTP user\n")
         f.write("umask 022\n")
+
+    # Ensure the target directory has the correct group ownership and setgid bit
+    os.system(f"chown -R {sftp_user}:www-data {app_root}")
+    os.system(f"chmod -R g+rwX {app_root}")
+    os.system(f"chmod g+s {app_root}")
 
     # Print summary
     info_app(app_name)
