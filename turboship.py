@@ -129,28 +129,42 @@ def create_app():
     os.makedirs(logs_path, exist_ok=True)
     os.makedirs(api_path, exist_ok=True)
 
-    # Create SSH+SFTP user if not exists
+    # --- Create SSH+SFTP user if not exists ---
     if subprocess.run(["id", "-u", sftp_user], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
         os.system(f"useradd -m -d {app_root} -s /bin/bash {sftp_user}")
         subprocess.run(["bash", "-c", f"echo '{sftp_user}:{sftp_pass}' | chpasswd"])
     else:
         print(colored(f"User {sftp_user} already exists. Skipping user creation.", "yellow"))
 
-    # Add user to www-data group
+    # --- Add to www-data group ---
     os.system(f"usermod -aG www-data {sftp_user}")
 
-    # Ownership: sftp_user + www-data group
-    os.system(f"chown -R {sftp_user}:www-data {app_root}")
-    os.system(f"chmod -R g+rwX {app_root}")
-    os.system(f"chmod g+s {app_root}")  # inherit group on new files
+    # --- Fix home directory perms for SSH ---
+    os.system(f"chown {sftp_user}:{sftp_user} {app_root}")
+    os.system(f"chmod 755 {app_root}")  # Required for SSH to traverse home
 
-    # htdocs & api: group write + setgid
+    # --- Create subdirectories ---
+    os.makedirs(app_path, exist_ok=True)
+    os.makedirs(api_path, exist_ok=True)
+    os.makedirs(logs_path, exist_ok=True)
+
+    # --- htdocs & api: owner = sftp_user, group = www-data, setgid so new files inherit group ---
+    os.system(f"chown -R {sftp_user}:www-data {app_path}")
     os.system(f"chmod 775 {app_path} && chmod g+s {app_path}")
+
+    os.system(f"chown -R {sftp_user}:www-data {api_path}")
     os.system(f"chmod 775 {api_path} && chmod g+s {api_path}")
 
-    # logs: Nginx only
+    # --- logs: Nginx only ---
     os.system(f"chown -R www-data:www-data {logs_path}")
     os.system(f"chmod -R 755 {logs_path}")
+
+    # --- Ensure .bashrc exists & owned by the user ---
+    bashrc_path = os.path.join(app_root, ".bashrc")
+    if not os.path.exists(bashrc_path):
+        with open(bashrc_path, "w") as f:
+            f.write("\n# Turboship defaults\numask 002\n")  # group writable by default
+    os.system(f"chown {sftp_user}:{sftp_user} {bashrc_path}")
 
     # PM2 config
     pm2_config_path = os.path.join(app_root, "pm2.config.js")
@@ -158,19 +172,19 @@ def create_app():
     if not os.path.exists(pm2_config_path):
         with open(pm2_config_path, "w") as f:
             f.write(f"""module.exports = {{
-        apps: [
-            {{
-                name: "{app_name}-backend",
-                script: "npm start",
-                cwd: "{cwd_path}",
-                watch: false,
-                env: {{
-                    NODE_ENV: "production",
-                    PORT: {port}
-                }}
-            }}
-        ]
-}};""")
+                    apps: [
+                        {{
+                            name: "{app_name}-backend",
+                            script: "npm start",
+                            cwd: "{cwd_path}",
+                            watch: false,
+                            env: {{
+                                NODE_ENV: "production",
+                                PORT: {port}
+                            }}
+                        }}
+                    ]
+            }};""")
     os.system(f"chown {sftp_user}:www-data {pm2_config_path}")
     os.system(f"chmod 644 {pm2_config_path}")
 
