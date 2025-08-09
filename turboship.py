@@ -127,6 +127,10 @@ def create_app():
     os.system(f"chown root:root {chroot_dir}")
     os.system(f"chmod 755 {chroot_dir}")
 
+    # Ensure the user's home directory inside the chroot is writable
+    os.system(f"chown {sftp_user}:{sftp_user} {app_root}")
+    os.system(f"chmod 755 {app_root}")
+
     # Create directories
     os.makedirs(app_path, exist_ok=True)
     os.makedirs(logs_path, exist_ok=True)
