@@ -10,9 +10,27 @@ from datetime import datetime
 from tabulate import tabulate
 from termcolor import colored
 from pyfiglet import figlet_format
+import logging
 
 TURBOSHIP_VERSION = "0.8"
-DB_PATH = "/opt/turboship/turboship.db"
+LOG_FILE = "/var/log/turboship.log"
+DB_PATH = os.getenv("TURBOSHIP_DB_PATH", "/opt/turboship/turboship.db")
+BASE_DIR = os.getenv("TURBOSHIP_BASE_DIR", "/var/www")
+
+# Configure logging
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+def log_and_run(command):
+    """Run a shell command and log it."""
+    logging.info(f"Running command: {command}")
+    result = os.system(command)
+    if result != 0:
+        logging.error(f"Command failed: {command}")
+        raise Exception(f"Command failed: {command}")
 
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -133,8 +151,8 @@ def create_app():
     # Ensure the ChrootDirectory exists and has the correct permissions
     chroot_dir = os.path.join(app_root, "..")
     os.makedirs(chroot_dir, exist_ok=True)
-    os.system(f"chown root:root {chroot_dir}")
-    os.system(f"chmod 755 {chroot_dir}")
+    log_and_run(f"chown root:root {chroot_dir}")
+    log_and_run(f"chmod 755 {chroot_dir}")
 
     # Ensure the user's home directory inside the chroot is owned by root
     os.system(f"chown root:root {app_root}")
