@@ -615,7 +615,8 @@ def main():
                 else:
                     print("Invalid choice. Please try again.")
         except KeyboardInterrupt:
-            print("\nExiting Turboship mode.")
+            print("\nExiting Turboship mode gracefully. Goodbye!")
+            exit(0)
     else:
         # Banner
         print(colored(figlet_format("Turboship"), "green"))
