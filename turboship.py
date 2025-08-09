@@ -118,37 +118,35 @@ def create_app():
     conn.commit()
     conn.close()
 
-    app_root = f"/var/www/{app_name}"
-    app_path = os.path.join(app_root, "htdocs")
-    logs_path = os.path.join(app_root, "logs")
-    api_path = os.path.join(app_root, "api")
+        # Ensure base directory exists
+    os.makedirs("/var/www", exist_ok=True)
 
-    # --- Create SSH+SFTP user first (so home dir isn’t pre-created) ---
+    # Create app directories
+    os.makedirs(app_root, exist_ok=True)
+    os.makedirs(app_path, exist_ok=True)
+    os.makedirs(logs_path, exist_ok=True)
+    os.makedirs(api_path, exist_ok=True)
+
+    # Create SSH+SFTP user if not exists
     if subprocess.run(["id", "-u", sftp_user], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
-        # Create home (useradd will create app_root) and copy /etc/skel
-        os.system(f"useradd -m -d {app_root} -s /bin/bash {sftp_user}")
+        os.system(f"useradd -d {app_root} -s /bin/bash {sftp_user}")
         subprocess.run(["bash", "-c", f"echo '{sftp_user}:{sftp_pass}' | chpasswd"])
     else:
         print(colored(f"User {sftp_user} already exists. Skipping user creation.", "yellow"))
-        # If existing user has different home, move it (optional):
-        # os.system(f"usermod -d {app_root} -m {sftp_user}")
 
-    # --- Now create subdirectories (they may not exist yet) ---
-    os.makedirs(app_path, exist_ok=True)
-    os.makedirs(api_path, exist_ok=True)
-    os.makedirs(logs_path, exist_ok=True)
-
-    # --- Group & permissions ---
+    # Add user to www-data group
     os.system(f"usermod -aG www-data {sftp_user}")
-    os.system(f"chown {sftp_user}:{sftp_user} {app_root}")
-    os.system("chmod 755 {app_root}")
 
-    os.system(f"chown -R {sftp_user}:www-data {app_path}")
+    # Ownership & permissions
+    os.system(f"chown -R {sftp_user}:www-data {app_root}")
+    os.system(f"chmod -R g+rwX {app_root}")
+    os.system(f"chmod g+s {app_root}")  # setgid so new files inherit group
+
+    # htdocs & api directories
     os.system(f"chmod 775 {app_path} && chmod g+s {app_path}")
-
-    os.system(f"chown -R {sftp_user}:www-data {api_path}")
     os.system(f"chmod 775 {api_path} && chmod g+s {api_path}")
 
+    # logs directory (Nginx only)
     os.system(f"chown -R www-data:www-data {logs_path}")
     os.system(f"chmod -R 755 {logs_path}")
 
