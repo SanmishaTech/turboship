@@ -220,6 +220,7 @@ def create_app():
 
     # Configure Nginx
     configure_nginx(app_name, [temp_domain], api_path)
+    install_ssl(app_name)
 
     # Final info
     info_app(app_name)
