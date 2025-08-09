@@ -105,6 +105,7 @@ def create_app():
     temp_domain = f"{app_name}.{get_public_ip()}.sslip.io"
     now = datetime.now().isoformat()
 
+    # Save to DB
     conn = sqlite3.connect(DB_PATH)
     port = allocate_port()
     conn.execute(
@@ -118,32 +119,40 @@ def create_app():
     conn.commit()
     conn.close()
 
-    app_root = f"/var/www/{app_name}_sftp"
+    # Paths
+    app_root = f"/var/www/{app_name}"
     app_path = os.path.join(app_root, "htdocs")
     logs_path = os.path.join(app_root, "logs")
     api_path = os.path.join(app_root, "api")
 
+    os.makedirs(app_path, exist_ok=True)
+    os.makedirs(logs_path, exist_ok=True)
+    os.makedirs(api_path, exist_ok=True)
+
+    # Create SSH+SFTP user if not exists
     if subprocess.run(["id", "-u", sftp_user], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
         os.system(f"useradd -m -d {app_root} -s /bin/bash {sftp_user}")
         subprocess.run(["bash", "-c", f"echo '{sftp_user}:{sftp_pass}' | chpasswd"])
     else:
         print(colored(f"User {sftp_user} already exists. Skipping user creation.", "yellow"))
 
-    os.system("groupadd -f sftpusers")
-    os.system(f"usermod -aG sftpusers {sftp_user}")
+    # Add user to www-data group
+    os.system(f"usermod -aG www-data {sftp_user}")
 
-    os.makedirs(app_path, exist_ok=True)
-    os.makedirs(logs_path, exist_ok=True)
-    os.makedirs(api_path, exist_ok=True)
+    # Ownership: sftp_user + www-data group
+    os.system(f"chown -R {sftp_user}:www-data {app_root}")
+    os.system(f"chmod -R g+rwX {app_root}")
+    os.system(f"chmod g+s {app_root}")  # inherit group on new files
 
-    # Initial ownership (kept once)
-    os.system(f"chown -R {sftp_user}:{sftp_user} {app_path}")
-    os.system(f"chown -R {sftp_user}:{sftp_user} {api_path}")
-    os.system(f"chown -R {sftp_user}:{sftp_user} {logs_path}")
-    os.system(f"chmod -R 755 {app_path}")
-    os.system(f"chmod -R 750 {api_path}")
-    os.system(f"chmod -R 750 {logs_path}")
+    # htdocs & api: group write + setgid
+    os.system(f"chmod 775 {app_path} && chmod g+s {app_path}")
+    os.system(f"chmod 775 {api_path} && chmod g+s {api_path}")
 
+    # logs: Nginx only
+    os.system(f"chown -R www-data:www-data {logs_path}")
+    os.system(f"chmod -R 755 {logs_path}")
+
+    # PM2 config
     pm2_config_path = os.path.join(app_root, "pm2.config.js")
     cwd_path = api_path
     if not os.path.exists(pm2_config_path):
@@ -162,7 +171,7 @@ def create_app():
             }}
         ]
 }};""")
-    os.system(f"chown {sftp_user}:{sftp_user} {pm2_config_path}")
+    os.system(f"chown {sftp_user}:www-data {pm2_config_path}")
     os.system(f"chmod 644 {pm2_config_path}")
 
     # Landing page
@@ -172,18 +181,19 @@ def create_app():
         if not os.path.exists(index_target):
             with open(landing_path) as src, open(index_target, "w") as dst:
                 dst.write(src.read().replace("{app_name}", app_name))
-            os.system(f"chown {sftp_user}:{sftp_user} {index_target}")
+            os.system(f"chown {sftp_user}:www-data {index_target}")
             os.system(f"chmod 644 {index_target}")
     else:
         print(colored("⚠️ landing_template.html not found — skipping landing page copy.", "yellow"))
 
+    # Database setup
     if db_type == "mariadb":
         sql = f"""
-CREATE DATABASE IF NOT EXISTS {db_name};
-CREATE USER IF NOT EXISTS '{db_user}'@'%' IDENTIFIED BY '{db_pass}';
-GRANT ALL PRIVILEGES ON {db_name}.* TO '{db_user}'@'%';
-FLUSH PRIVILEGES;
-"""
+            CREATE DATABASE IF NOT EXISTS {db_name};
+            CREATE USER IF NOT EXISTS '{db_user}'@'%' IDENTIFIED BY '{db_pass}';
+            GRANT ALL PRIVILEGES ON {db_name}.* TO '{db_user}'@'%';
+            FLUSH PRIVILEGES;
+            """
         subprocess.run(["mysql", "-u", "root", "-e", sql])
     elif db_type == "postgres":
         for cmd in [
@@ -193,20 +203,17 @@ FLUSH PRIVILEGES;
         ]:
             subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', cmd])
 
+    # Nginx config
     configure_nginx(app_name, [temp_domain], api_path)
 
-    # Final unified ownership (single pass)
-    os.system(f"chown -R {sftp_user}:{sftp_user} {app_root}")
-    os.system(f"chmod -R 750 {app_root}")
-    os.system(f"chmod -R 755 {app_path}")
-    os.system(f"usermod -aG www-data {sftp_user}")
+    # Umask for new files
+    bashrc_path = os.path.join(app_root, ".bashrc")
+    with open(bashrc_path, "a") as f:
+        f.write("\n# Turboship defaults\numask 002\n")  # group-writable files
 
-    # Ensure umask (append once)
-    sftp_profile_path = os.path.join(app_root, ".bashrc")
-    with open(sftp_profile_path, "a") as f:
-        f.write("\n# Turboship defaults\numask 022\n")
-
+    # Summary
     info_app(app_name)
+
 #
 def configure_nginx(app, domains, api_path=None):
     if isinstance(domains, str):
