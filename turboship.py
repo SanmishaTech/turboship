@@ -120,6 +120,16 @@ def create_app():
     subprocess.run(["bash", "-c", f"echo 'ForceCommand internal-sftp' >> /etc/ssh/sshd_config"])
     subprocess.run(["bash", "-c", f"echo 'AllowTcpForwarding no' >> /etc/ssh/sshd_config"])
 
+    # Add the SFTP user to the sftpusers group
+    os.system("groupadd -f sftpusers")
+    os.system(f"usermod -aG sftpusers {sftp_user}")
+
+    # Ensure the ChrootDirectory exists and has the correct permissions
+    chroot_dir = os.path.join(app_root, "..")
+    os.makedirs(chroot_dir, exist_ok=True)
+    os.system(f"chown root:root {chroot_dir}")
+    os.system(f"chmod 755 {chroot_dir}")
+
     # Restart SSH service to apply changes
     os.system("systemctl restart sshd")
 
