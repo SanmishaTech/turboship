@@ -106,9 +106,13 @@ def create_app():
     app_path = os.path.join(app_root, "htdocs")
     logs_path = os.path.join(app_root, "logs")
 
-    # Ask if API folder is needed
-    api_needed = input("Do you need an API folder? (yes/no) [no]: ")
+    # Initialize api_path to None
+    api_path = None
 
+    # Ask if API folder is needed
+    api_needed = input("Do you need an API folder? (yes/no) [no]: ").strip().lower() or "no"
+    if api_needed == "yes":
+        api_path = os.path.join(app_root, "api")
 
     # Check if the user already exists
     user_check = subprocess.run(["id", "-u", sftp_user], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
