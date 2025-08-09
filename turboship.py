@@ -107,8 +107,8 @@ def create_app():
     logs_path = os.path.join(app_root, "logs")
 
     # Ask if API folder is needed
-    api_needed = input("Do you need an API folder? (yes/no) [no]: ").strip().lower() or "no"
-    api_path = os.path.join(app_root, "api") if api_needed == "yes" else None
+    api_needed = input("Do you need an API folder? (yes/no) [no]: ")
+
 
     # Create user with SSH + SFTP
     os.system(f"useradd -m -d {app_root} -s /bin/bash {sftp_user}")
@@ -127,9 +127,15 @@ def create_app():
     os.system(f"chown root:root {chroot_dir}")
     os.system(f"chmod 755 {chroot_dir}")
 
-    # Ensure the user's home directory inside the chroot is writable
-    os.system(f"chown {sftp_user}:{sftp_user} {app_root}")
+    # Ensure the user's home directory inside the chroot is owned by root
+    os.system(f"chown root:root {app_root}")
     os.system(f"chmod 755 {app_root}")
+
+    # Create a writable subdirectory for the user
+    user_writable_dir = os.path.join(app_root, "htdocs")
+    os.makedirs(user_writable_dir, exist_ok=True)
+    os.system(f"chown {sftp_user}:{sftp_user} {user_writable_dir}")
+    os.system(f"chmod 755 {user_writable_dir}")
 
     # Create directories
     os.makedirs(app_path, exist_ok=True)
