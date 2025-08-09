@@ -52,7 +52,7 @@ sudo systemctl restart mariadb
 # 8. Configure PostgreSQL for remote access
 echo "🌐 Configuring PostgreSQL for remote access..."
 echo "host    all             all             0.0.0.0/0               md5" | sudo tee -a /etc/postgresql/*/main/pg_hba.conf
-sudo sed -i "s/^#listen_addresses = 'localhost'/listen_addresses = '*'/'" /etc/postgresql/*/main/postgresql.conf || { echo "PostgreSQL configuration failed"; exit 1; }
+sudo sed -i "s|^#listen_addresses = 'localhost'|listen_addresses = '*'|" /etc/postgresql/*/main/postgresql.conf || { echo "PostgreSQL configuration failed"; exit 1; }
 sudo systemctl restart postgresql
 
 # 9. Configure SSH for SFTP with chroot
