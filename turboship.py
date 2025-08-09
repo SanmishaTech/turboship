@@ -105,7 +105,6 @@ def create_app():
     temp_domain = f"{app_name}.{get_public_ip()}.sslip.io"
     now = datetime.now().isoformat()
 
-    # Save to DB
     conn = sqlite3.connect(DB_PATH)
     port = allocate_port()
     conn.execute(
@@ -119,59 +118,52 @@ def create_app():
     conn.commit()
     conn.close()
 
-    # Paths
     app_root = f"/var/www/{app_name}"
     app_path = os.path.join(app_root, "htdocs")
     logs_path = os.path.join(app_root, "logs")
     api_path = os.path.join(app_root, "api")
 
-    os.makedirs(app_path, exist_ok=True)
-    os.makedirs(logs_path, exist_ok=True)
-    os.makedirs(api_path, exist_ok=True)
-
-    # --- Create SSH+SFTP user if not exists ---
+    # --- Create SSH+SFTP user first (so home dir isn’t pre-created) ---
     if subprocess.run(["id", "-u", sftp_user], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
-        # Create user with correct home directory
+        # Create home (useradd will create app_root) and copy /etc/skel
         os.system(f"useradd -m -d {app_root} -s /bin/bash {sftp_user}")
-        os.system(f"usermod -d {app_root} {sftp_user}")  # force home in case app_root existed
-
-        # Set password immediately
         subprocess.run(["bash", "-c", f"echo '{sftp_user}:{sftp_pass}' | chpasswd"])
     else:
         print(colored(f"User {sftp_user} already exists. Skipping user creation.", "yellow"))
-        os.system(f"usermod -d {app_root} {sftp_user}")  # ensure home path is correct
+        # If existing user has different home, move it (optional):
+        # os.system(f"usermod -d {app_root} -m {sftp_user}")
 
-    # --- Add to www-data group ---
-    os.system(f"usermod -aG www-data {sftp_user}")
-
-    # --- Fix home directory perms for SSH ---
-    os.system(f"chown {sftp_user}:{sftp_user} {app_root}")
-    os.system(f"chmod 755 {app_root}")  # Required for SSH to traverse home
-
-    # --- Create subdirectories ---
+    # --- Now create subdirectories (they may not exist yet) ---
     os.makedirs(app_path, exist_ok=True)
     os.makedirs(api_path, exist_ok=True)
     os.makedirs(logs_path, exist_ok=True)
 
-    # --- htdocs & api: owner = sftp_user, group = www-data, setgid so new files inherit group ---
+    # --- Group & permissions ---
+    os.system(f"usermod -aG www-data {sftp_user}")
+    os.system(f"chown {sftp_user}:{sftp_user} {app_root}")
+    os.system("chmod 755 {app_root}")
+
     os.system(f"chown -R {sftp_user}:www-data {app_path}")
     os.system(f"chmod 775 {app_path} && chmod g+s {app_path}")
 
     os.system(f"chown -R {sftp_user}:www-data {api_path}")
     os.system(f"chmod 775 {api_path} && chmod g+s {api_path}")
 
-    # --- logs: Nginx only ---
     os.system(f"chown -R www-data:www-data {logs_path}")
     os.system(f"chmod -R 755 {logs_path}")
 
-    # --- Ensure .bashrc exists & owned by the user ---
     bashrc_path = os.path.join(app_root, ".bashrc")
     if not os.path.exists(bashrc_path):
         with open(bashrc_path, "w") as f:
-            f.write("\n# Turboship defaults\numask 002\n")  # group writable by default
+            f.write("\n# Turboship defaults\numask 002\n")
+    else:
+        # Ensure umask is present once
+        with open(bashrc_path, "r+") as f:
+            content = f.read()
+            if "umask 002" not in content:
+                f.write("\n# Turboship defaults\numask 002\n")
     os.system(f"chown {sftp_user}:{sftp_user} {bashrc_path}")
 
-    # PM2 config
     pm2_config_path = os.path.join(app_root, "pm2.config.js")
     cwd_path = api_path
     if not os.path.exists(pm2_config_path):
@@ -193,7 +185,6 @@ def create_app():
     os.system(f"chown {sftp_user}:www-data {pm2_config_path}")
     os.system(f"chmod 644 {pm2_config_path}")
 
-    # Landing page
     landing_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "landing_template.html")
     if os.path.exists(landing_path):
         index_target = os.path.join(app_path, "index.html")
@@ -202,10 +193,7 @@ def create_app():
                 dst.write(src.read().replace("{app_name}", app_name))
             os.system(f"chown {sftp_user}:www-data {index_target}")
             os.system(f"chmod 644 {index_target}")
-    else:
-        print(colored("⚠️ landing_template.html not found — skipping landing page copy.", "yellow"))
 
-    # Database setup
     if db_type == "mariadb":
         sql = f"""
             CREATE DATABASE IF NOT EXISTS {db_name};
@@ -214,28 +202,18 @@ def create_app():
             FLUSH PRIVILEGES;
             """
         subprocess.run(["mysql", "-u", "root", "-e", sql])
-    elif db_type == "postgres":
-        # Create user, database, and restrict access
-        pg_cmds = [
+    else:
+        for cmd in [
             f"CREATE USER {db_user} WITH PASSWORD '{db_pass}';",
             f"CREATE DATABASE {db_name} OWNER {db_user};",
             f"REVOKE CONNECT ON DATABASE {db_name} FROM PUBLIC;",
             f"GRANT CONNECT ON DATABASE {db_name} TO {db_user};",
             f"GRANT USAGE ON SCHEMA public TO {db_user};",
             f"GRANT ALL PRIVILEGES ON SCHEMA public TO {db_user};"
-        ]
-        for cmd in pg_cmds:
+        ]:
             subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', cmd])
 
-    # Nginx config
     configure_nginx(app_name, [temp_domain], api_path)
-
-    # Umask for new files
-    bashrc_path = os.path.join(app_root, ".bashrc")
-    with open(bashrc_path, "a") as f:
-        f.write("\n# Turboship defaults\numask 002\n")  # group-writable files
-
-    # Summary
     info_app(app_name)
 
 #
@@ -502,7 +480,14 @@ def delete_app(app):
         """
         subprocess.run(["mysql", "-u", "root", "-e", sql])
     elif db_type == "postgres":
+        # Drop DB first
         subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', f"DROP DATABASE IF EXISTS {db_name};"])
+
+        # Revoke privileges and drop owned objects before removing the role
+        subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', f"REVOKE ALL PRIVILEGES ON SCHEMA public FROM {db_user};"])
+        subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', f"DROP OWNED BY {db_user};"])
+        
+        # Now drop the role
         subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', f"DROP ROLE IF EXISTS {db_user};"])
 
     # Remove Linux user (after processes killed)
