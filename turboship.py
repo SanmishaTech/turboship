@@ -123,14 +123,7 @@ def create_app():
     app_root = f"/var/www/{app_name}_sftp"
     app_path = os.path.join(app_root, "htdocs")
     logs_path = os.path.join(app_root, "logs")
-
-    # Initialize api_path to None
-    api_path = None
-
-    # Ask if API folder is needed
-    api_needed = input("Do you need an API folder? (yes/no) [no]: ").strip().lower() or "no"
-    if api_needed == "yes":
-        api_path = os.path.join(app_root, "api")
+    api_path = os.path.join(app_root, "api")
 
     # Check if the user already exists
     user_check = subprocess.run(["id", "-u", sftp_user], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -167,13 +160,11 @@ def create_app():
     # Create directories
     os.makedirs(app_path, exist_ok=True)
     os.makedirs(logs_path, exist_ok=True)
-    if api_path:
-        os.makedirs(api_path, exist_ok=True)
+    os.makedirs(api_path, exist_ok=True)
 
     # Permissions
     os.system(f"chown -R {sftp_user}:{sftp_user} {app_path}")
-    if api_path:
-        os.system(f"chown -R {sftp_user}:{sftp_user} {api_path}")
+    os.system(f"chown -R {sftp_user}:{sftp_user} {api_path}")
     os.system(f"chown -R www-data:www-data {logs_path}")
 
     # Ensure proper permissions for htdocs directory
@@ -186,7 +177,7 @@ def create_app():
 
     # Ensure pm2.config.js is created before setting permissions
     pm2_config_path = os.path.join(app_root, "pm2.config.js")
-    cwd_path = api_path if api_needed == "yes" else app_path
+    cwd_path = api_path
     pm2_config = f"""module.exports = {{
         apps: [
             {{
