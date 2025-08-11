@@ -440,12 +440,32 @@ def delete_app(app):
         print(colored(f"❌ App '{app}' not found.", "red"))
         return
 
-    temp_domain, real_domain, db_type, db_name, db_user, sftp_user = row
+    temp_domain, rea    # ---- Stop PM2 process(es) for this app ----
+    pm2_name = f"{app}-backend"
+    print(colored("⏹  Stopping PM2 process...", "yellow"))
+    # Try as root (if PM2 was run as root)
+    os.system(f"pm2 delete {pm2_name} >/dev/null 2>&1")
+    # Try as the app user (common case)
+    os.system(f"sudo -u {sftp_user} pm2 delete {pm2_name} >/dev/null 2>&1")
+    # Optional: remove saved dump entries
+    os.system("pm2 save >/dev/null 2>&1 || true")
+    os.system(f"sudo -u {sftp_user} pm2 save >/dev/null 2>&1 || true")l_domain, db_type, db_name, db_user, sftp_user = row
     domains = [temp_domain]
     if real_domain:
         domains.append(real_domain)
 
     app_root = f"/var/www/{app}"
+
+    # ---- Stop PM2 process(es) for this app ----
+    pm2_name = f"{app}-backend"
+    print(colored("⏹  Stopping PM2 process...", "yellow"))
+    # Try as root (if PM2 was run as root)
+    os.system(f"pm2 delete {pm2_name} >/dev/null 2>&1")
+    # Try as the app user (common case)
+    os.system(f"sudo -u {sftp_user} pm2 delete {pm2_name} >/dev/null 2>&1")
+    # Optional: remove saved dump entries
+    os.system("pm2 save >/dev/null 2>&1 || true")
+    os.system(f"sudo -u {sftp_user} pm2 save >/dev/null 2>&1 || true")    
 
     # ---- Terminate active sessions/processes (SSH, app, etc.) ----
     print(colored("⏹  Terminating user processes (SSH / app)...", "yellow"))
@@ -499,7 +519,11 @@ def delete_app(app):
         subprocess.run(['sudo', '-u', 'postgres', 'psql', '-c', f"DROP ROLE IF EXISTS {db_user};"])
 
     # Remove Linux user (after processes killed)
-    subprocess.run(["userdel", "-r", sftp_user], stderr=subprocess.DEVNULL)
+    result = subprocess.run(["userdel", "-r", sftp_user], capture_output=True, text=True)
+    if result.stdout:
+        print(result.stdout)
+    if result.stderr:
+        print(result.stderr)
 
     # Remove Nginx config
     nginx_path = f"/etc/nginx/sites-available/{app}"
