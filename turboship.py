@@ -244,73 +244,81 @@ def configure_nginx(app, domains, api_path=None):
         return
     port = row[0]
 
-    # Generate NGINX configuration based on whether a separate API is needed
+    # Generate NGINX configuration (HTTP only). SSL block (443) added later by install_ssl.
     if api_path is None:
-        # This configuration is for single-process apps like Next.js
-        # where the app server handles all routes (pages, api, static).
         conf = f"""
-        server {{
-            listen 80;
-            server_name {server_names};
+server {{
+    listen 80;
+    server_name {server_names};
 
-            # Path for ACME challenge files for Let's Encrypt
-            location ^~ /.well-known/acme-challenge/ {{
-                allow all;
-                default_type "text/plain";
-                root {root_path};
-            }}
+    location ^~ /.well-known/acme-challenge/ {{
+        allow all;
+        default_type "text/plain";
+        root {root_path};
+    }}
 
-            # Proxy all other requests to the running application
-            location / {{
-                proxy_pass http://localhost:{port};
-                proxy_http_version 1.1;
-                proxy_set_header Upgrade $http_upgrade;
-                proxy_set_header Connection 'upgrade';
-                proxy_set_header Host $host;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
-                proxy_cache_bypass $http_upgrade;
-            }}
-        }}
-        """
+    location / {{
+        proxy_pass http://localhost:{port};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }}
+}}
+"""
     else:
-        # This configuration is for separate frontend (in htdocs) and backend (in api)
+        uploads_alias = f"/var/www/{app}/api/uploads/"
         conf = f"""
-        server {{
-            listen 80;
-            server_name {server_names};
+server {{
+    listen 80;
+    server_name {server_names};
 
-            root {root_path};
-            index index.html;
+    root {root_path};
+    index index.html;
 
-            # Path for ACME challenge files for Let's Encrypt
-            location ^~ /.well-known/acme-challenge/ {{
-                allow all;
-                default_type "text/plain";
-                root {root_path};
-            }}
+    location ^~ /.well-known/acme-challenge/ {{
+        allow all;
+        default_type "text/plain";
+        root {root_path};
+    }}
 
-            # Proxy API requests to the backend server
-            location /api/ {{
-                proxy_pass http://localhost:{port}/api/;
-                proxy_http_version 1.1;
-                proxy_set_header Upgrade $http_upgrade;
-                proxy_set_header Connection 'upgrade';
-                proxy_set_header Host $host;
-                proxy_cache_bypass $http_upgrade;
-            }}
+    location /api/ {{
+        proxy_pass http://localhost:{port}/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        send_timeout 300s;
+    }}
 
-            # Serve static frontend files
-            location / {{
-                try_files $uri $uri/ /index.html;
-            }}
+    location /uploads/ {{
+        alias {uploads_alias};
+        autoindex on;
+        add_header Access-Control-Allow-Origin *;
+        add_header Accept-Ranges bytes;
+        try_files $uri =404;
+    }}
 
-            add_header X-Frame-Options "SAMEORIGIN";
-            add_header X-Content-Type-Options "nosniff";
-            add_header X-XSS-Protection "1; mode=block";
-        }}
-        """
+    location / {{
+        try_files $uri /index.html;
+    }}
+
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-Content-Type-Options "nosniff";
+    add_header X-XSS-Protection "1; mode=block";
+}}
+"""
 
     # Use app name for NGINX configuration file
     path = f"/etc/nginx/sites-available/{app}"
@@ -376,8 +384,79 @@ def install_ssl(app):
         os.system("nginx -t")  # Show detailed errors
         return
 
-    # Reload NGINX after Certbot updates the configuration
-    os.system("nginx -t && systemctl reload nginx")
+    # After certbot creates SSL, rewrite nginx config with both 443 + 80 blocks (with /uploads & timeouts)
+    primary = domains[0]
+    # Re-fetch port
+    c.execute("SELECT port FROM apps WHERE app = ?", (app,))
+    prow = c.fetchone()
+    port = prow[0] if prow else 3000
+    root_path = f"/var/www/{app}/htdocs"
+    uploads_alias = f"/var/www/{app}/api/uploads/"
+    server_names = " ".join(domains)
+    ssl_conf = f"""
+server {{
+    server_name {server_names};
+
+    root {root_path};
+    index index.html;
+
+    location ^~ /.well-known/acme-challenge/ {{
+        allow all;
+        default_type "text/plain";
+        root {root_path};
+    }}
+
+    location /api/ {{
+        proxy_pass http://localhost:{port}/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        send_timeout 300s;
+    }}
+
+    location /uploads/ {{
+        alias {uploads_alias};
+        autoindex on;
+        add_header Access-Control-Allow-Origin *;
+        add_header Accept-Ranges bytes;
+        try_files $uri =404;
+    }}
+
+    location / {{
+        try_files $uri /index.html;
+    }}
+
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-Content-Type-Options "nosniff";
+    add_header X-XSS-Protection "1; mode=block";
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/{primary}/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/{primary}/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+}}
+
+server {{
+    listen 80;
+    server_name {server_names};
+    return 301 https://$host$request_uri;
+}}
+"""
+    path = f"/etc/nginx/sites-available/{app}"
+    try:
+        with open(path, "w") as f:
+            f.write(ssl_conf)
+        os.system("nginx -t && systemctl reload nginx")
+    except Exception as e:
+        print(colored(f"❌ Failed to write SSL nginx config: {e}", 'red'))
 
     conn.close()
 
