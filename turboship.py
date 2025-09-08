@@ -552,34 +552,12 @@ def delete_app(app):
     app_root = f"/var/www/{app}"
 
     # ---- Stop PM2 process(es) for this app ----
-
-        # 80 block with per-host redirect logic
-        redirect_block = ""
-        # For each domain, add if ($host = ...) redirect
-        for d in domains:
-            if d.startswith("www."):
-                # www to non-www
-                base = d[4:]
-                redirect_block += f"    if ($host = {d}) {{\n        return 301 https://{base}$request_uri;\n    }} # managed by Certbot\n\n"
-            else:
-                redirect_block += f"    if ($host = {d}) {{\n        return 301 https://$host$request_uri;\n    }} # managed by Certbot\n\n"
-
-        ssl_conf += f"""
     pm2_name = f"{app}-backend"
     print(colored("⏹  Stopping PM2 process...", "yellow"))
     # Try as root (if PM2 was run as root)
     os.system(f"pm2 delete {pm2_name} >/dev/null 2>&1")
     # Try as the app user (common case)
     os.system(f"sudo -u {sftp_user} pm2 delete {pm2_name} >/dev/null 2>&1")
-        path = f"/etc/nginx/sites-available/{app}"
-        try:
-            with open(path, "w") as f:
-                f.write(ssl_conf)
-            os.system("nginx -t && systemctl reload nginx")
-        except Exception as e:
-            print(colored(f"❌ Failed to write SSL nginx config: {e}", 'red'))
-
-        conn.close()
     # Optional: remove saved dump entries
     os.system("pm2 save >/dev/null 2>&1 || true")
     os.system(f"sudo -u {sftp_user} pm2 save >/dev/null 2>&1 || true")    
