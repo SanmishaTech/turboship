@@ -358,71 +358,154 @@ server {{
 
 
 def install_ssl(app):
+    """Issue SSL via certbot for all domains and write final 443/80 nginx config."""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT temp_domain, real_domain FROM apps WHERE app = ?", (app,))
     row = c.fetchone()
     if not row:
         print(colored(f"❌ App '{app}' not found in DB.", "red"))
+        conn.close()
         return
 
     temp_domain, real_domain = row
     domains = [temp_domain]
     if real_domain:
         domains.append(real_domain)
+        # ensure both www and apex are covered
+        if real_domain.startswith("www."):
+            base = real_domain[4:]
+            if base not in domains:
+                domains.append(base)
+        else:
+            www_domain = "www." + real_domain
+            if www_domain not in domains:
+                domains.append(www_domain)
 
     domain_flags = " ".join(f"-d {d}" for d in domains)
 
-    # Attempt to generate SSL certificates
     certbot_command = (
-        f"certbot --nginx --non-interactive --agree-tos {domain_flags} "
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("SELECT temp_domain, real_domain FROM apps WHERE app = ?", (app,))
-        row = c.fetchone()
-        if not row:
-            print(colored(f"❌ App '{app}' not found in DB.", "red"))
-            return
+        f"sudo certbot --nginx --non-interactive --agree-tos {domain_flags} "
+        f"-m admin@{temp_domain} --redirect --expand"
+    )
+    result = os.system(certbot_command)
+    if result != 0:
+        os.system("nginx -t")
+        conn.close()
+        return
 
-        temp_domain, real_domain = row
-        domains = [temp_domain]
-        if real_domain:
-            domains.append(real_domain)
-            # Add www if not present
-            if real_domain.startswith("www."):
-                base = real_domain[4:]
-                if base not in domains:
-                    domains.append(base)
-            else:
-                www_domain = "www." + real_domain
-                if www_domain not in domains:
-                    domains.append(www_domain)
+    # Build final nginx config (SSL server and HTTP redirect server)
+    c.execute("SELECT port FROM apps WHERE app = ?", (app,))
+    prow = c.fetchone()
+    port = prow[0] if prow else 3000
+    primary = domains[0]
+    root_path = f"/var/www/{app}/htdocs"
+    uploads_alias = f"/var/www/{app}/api/uploads/"
+    server_names = " ".join(domains)
 
-        domain_flags = " ".join(f"-d {d}" for d in domains)
+    ssl_conf = f"""
+server {{
+    server_name {server_names};
 
-        # Attempt to generate SSL certificates
-        certbot_command = (
-            f"sudo certbot --nginx --non-interactive --agree-tos {domain_flags} "
-            f"-m admin@{temp_domain} --redirect --expand"
-        )
-        result = os.system(certbot_command)
+    root {root_path};
+    index index.html;
 
-        if result != 0:
-            os.system("nginx -t")  # Show detailed errors
-            return
+    location ^~ /.well-known/acme-challenge/ {{
+        allow all;
+        default_type "text/plain";
+        root {root_path};
+    }}
 
-        # After certbot creates SSL, rewrite nginx config with both 443 + 80 blocks (with /uploads & timeouts)
-        primary = domains[0]
-        c.execute("SELECT port FROM apps WHERE app = ?", (app,))
-        prow = c.fetchone()
-        port = prow[0] if prow else 3000
-        root_path = f"/var/www/{app}/htdocs"
-        uploads_alias = f"/var/www/{app}/api/uploads/"
-        server_names = " ".join(domains)
+    location /api/ {{
+        proxy_pass http://localhost:{port}/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        send_timeout 300s;
+    }}
 
-        # 443 block
-        ssl_conf = f"""
-        except:
+    location /uploads/ {{
+        alias {uploads_alias};
+        autoindex on;
+        add_header Access-Control-Allow-Origin *;
+        add_header Accept-Ranges bytes;
+        try_files $uri =404;
+    }}
+
+    location / {{
+        try_files $uri /index.html;
+    }}
+
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-Content-Type-Options "nosniff";
+    add_header X-XSS-Protection "1; mode=block";
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/{primary}/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/{primary}/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+}}
+"""
+
+    # HTTP redirect block with per-host rules (www -> apex)
+    redirect_block = ""
+    for d in domains:
+        if d.startswith("www."):
+            base = d[4:]
+            redirect_block += (
+                f"    if ($host = {d}) {{\n        return 301 https://{base}$request_uri;\n    }} # managed by Certbot\n\n"
+            )
+        else:
+            redirect_block += (
+                f"    if ($host = {d}) {{\n        return 301 https://$host$request_uri;\n    }} # managed by Certbot\n\n"
+            )
+
+    ssl_conf += f"""
+server {{
+{redirect_block}    listen 80;
+    server_name {server_names};
+    return 301 https://$host$request_uri;
+}}
+"""
+
+    path = f"/etc/nginx/sites-available/{app}"
+    try:
+        with open(path, "w") as f:
+            f.write(ssl_conf)
+        os.system("nginx -t && systemctl reload nginx")
+    except Exception as e:
+        print(colored(f"❌ Failed to write SSL nginx config: {e}", 'red'))
+
+    conn.close()
+
+def test_app(app):
+    """Basic health checks for domains and DB connectivity."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass FROM apps WHERE app = ?", (app,))
+    row = c.fetchone()
+    if not row:
+        print(colored("❌ App not found.", "red"))
+        conn.close()
+        return
+
+    temp_domain, real_domain, db_type, db_name, db_user, db_pass, sftp_user, sftp_pass = row
+    print(colored(f"\nTesting app '{app}':", "cyan"))
+
+    for domain in filter(None, [temp_domain, real_domain]):
+        print(f"🌐 Testing domain: {domain}")
+        try:
+            socket.gethostbyname(domain)
+            print(colored("✅ DNS Resolved", "green"))
+        except Exception:
             print(colored("❌ DNS failed", "red"))
 
     if db_type == "mariadb":
@@ -431,15 +514,12 @@ def install_ssl(app):
         env = os.environ.copy()
         env['PGPASSWORD'] = db_pass
         result = subprocess.call(["psql", "-U", db_user, "-d", db_name, "-c", "\\l"], env=env)
+    else:
+        result = 1
 
     print(colored("✅ DB Connection OK" if result == 0 else "❌ DB Connection Failed", "green" if result == 0 else "red"))
 
-    print(f"📦 Testing SFTP connection for user: {sftp_user}")
-    try:
-        result = subprocess.call(["sftp", "-oBatchMode=no", "-oStrictHostKeyChecking=no", f"{sftp_user}@localhost"], stderr=subprocess.DEVNULL)
-        print(colored("✅ SFTP Connection OK" if result == 0 else "❌ SFTP Connection Failed", "green" if result == 0 else "red"))
-    except Exception as e:
-        print(colored("❌ SFTP Connection Failed", "red"))
+    conn.close()
 
 def list_apps():
     conn = sqlite3.connect(DB_PATH)
